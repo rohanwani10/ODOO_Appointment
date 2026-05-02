@@ -16,6 +16,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { LoginResponse } from "@/types/user";
 import Link from "next/link";
 import { getErrorMessage } from "@/lib/errors";
+import { GoogleLoginButton } from "@/components/auth/google-login-button";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -180,6 +181,17 @@ export default function LoginPage() {
                 )}
               </button>
             </form>
+
+            {/* Google Sign-In Button */}
+            <div className="mt-6">
+              <GoogleLoginButton
+                onSuccess={() => {
+                  router.push("/dashboard");
+                }}
+                onError={setError}
+                className="w-full"
+              />
+            </div>
 
             {/* Divider */}
             <div className="relative mt-6 mb-6">

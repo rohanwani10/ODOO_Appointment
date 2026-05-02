@@ -1,5 +1,8 @@
+"use client";
+
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { GoogleOAuthProvider } from "@react-oauth/google";
 import { AuthProvider } from "@/contexts/AuthContext";
 import "./globals.css";
 
@@ -13,25 +16,29 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  title: "Calvero",
-  description:
-    "Premium scheduling for teams with Google Calendar sync, instant booking, and automatic meeting generation.",
-};
+const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
 
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  if (!googleClientId) {
+    console.warn(
+      "Warning: NEXT_PUBLIC_GOOGLE_CLIENT_ID is not set. Google OAuth will not work.",
+    );
+  }
+
   return (
     <html lang="en">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <AuthProvider>
-          <main>{children}</main>
-        </AuthProvider>
+        <GoogleOAuthProvider clientId={googleClientId}>
+          <AuthProvider>
+            <main>{children}</main>
+          </AuthProvider>
+        </GoogleOAuthProvider>
       </body>
     </html>
   );

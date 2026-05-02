@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Users, Calendar, ArrowRight } from "lucide-react";
+import { GoogleLoginButton } from "@/components/auth/google-login-button";
+import { useState } from "react";
 
 export default function RegisterPage() {
   const router = useRouter();
