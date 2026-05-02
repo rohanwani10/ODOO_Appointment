@@ -562,7 +562,7 @@ export default function DashboardPage() {
               <p className="text-base font-semibold text-white">No recent activity yet</p>
               <p className="mt-1 text-sm text-slate-300">Book a service to start seeing your activity timeline.</p>
               <Link
-                href="/bookings"
+                href="/"
                 className="mt-4 inline-flex min-h-11 items-center rounded-xl bg-white px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/80"
               >
                 Browse Services
@@ -632,10 +632,12 @@ export default function DashboardPage() {
               <div className="grid gap-3">
                 {[
                   {
-                    label: "Browse Services",
-                    href: "/bookings",
+                    label: isOrganizer ? "Service Manager" : "Browse Services",
+                    href: isOrganizer ? "/organizer/services" : "/",
                     icon: Plus,
-                    tooltip: "Find and book a new service",
+                    tooltip: isOrganizer
+                      ? "Create, edit, and publish bookable services"
+                      : "Find and book a new service",
                   },
                   {
                     label: "Appointments",
@@ -644,12 +646,12 @@ export default function DashboardPage() {
                     tooltip: "Review your upcoming and past appointments",
                   },
                   {
-                    label: isOrganizer ? "Availability" : "Feedback",
-                    href: isOrganizer ? "/dashboard/availability" : "/feedback",
+                    label: isOrganizer ? "Resource Setup" : "Profile",
+                    href: isOrganizer ? "/organizer" : "/settings",
                     icon: isOrganizer ? Wrench : Shield,
                     tooltip: isOrganizer
-                      ? "Manage scheduling windows and calendar sync"
-                      : "Share feedback and improve service quality",
+                      ? "Manage organizations, resources, and working hours"
+                      : "Update your account and preferences",
                   },
                 ].map((action) => (
                   <Link
@@ -732,7 +734,7 @@ export default function DashboardPage() {
             <p className="text-lg font-semibold text-white">No upcoming events</p>
             <p className="mt-1 text-sm text-slate-300">Your schedule is free right now.</p>
             <Link
-              href="/bookings"
+              href="/"
               className="mt-4 inline-flex min-h-11 items-center rounded-xl bg-white px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/80"
             >
               Browse Services

@@ -1,9 +1,9 @@
 type MeetingType = {
 	_id: string;
 	name: string;
-	slug?: string;
+	slug: string;
 	duration: number;
-	isDefault?: boolean;
+	isDefault: boolean;
 };
 
 type BookingQuota = {

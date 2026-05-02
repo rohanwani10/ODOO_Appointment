@@ -14,7 +14,7 @@ import { getErrorMessage } from "@/lib/errors";
 import type { Appointment } from "@/types/booking";
 import type { Organization } from "@/types/organization";
 import type { Resource, ResourceType, ResourceWorkingHour } from "@/types/resource";
-import type { Service } from "@/types/service";
+import type { Service, FormQuestion } from "@/types/service";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Building2,
@@ -29,6 +29,11 @@ import {
   ChevronDown,
   ChevronUp,
   Edit3,
+  Trash2,
+  Copy,
+  Link2,
+  FileText,
+  X,
 } from "lucide-react";
 
 type WorkingHourForm = {
@@ -306,6 +311,16 @@ export default function OrganizerWorkspacePage() {
   const [isSubmittingResource, setIsSubmittingResource] = useState(false);
   const [isSubmittingService, setIsSubmittingService] = useState(false);
   const [publishingServiceId, setPublishingServiceId] = useState<number | null>(null);
+  const [deletingServiceId, setDeletingServiceId] = useState<number | null>(null);
+  const [editingService, setEditingService] = useState<Service | null>(null);
+  const [copiedLinkId, setCopiedLinkId] = useState<number | null>(null);
+
+  // Form questions state
+  const [formQuestionsByService, setFormQuestionsByService] = useState<Record<number, FormQuestion[]>>({});
+  const [editingQuestionServiceId, setEditingQuestionServiceId] = useState<number | null>(null);
+  const [questionForm, setQuestionForm] = useState({ question_text: "", field_type: "TEXT", is_required: false, options: "", display_order: 0 });
+  const [editingQuestionId, setEditingQuestionId] = useState<number | null>(null);
+  const [isSubmittingQuestion, setIsSubmittingQuestion] = useState(false);
 
   const [toasts, setToasts] = useState<Toast[]>([]);
   
@@ -685,23 +700,138 @@ export default function OrganizerWorkspacePage() {
 
   async function handlePublishToggle(service: Service) {
     setPublishingServiceId(service.id);
-
     try {
-      await apiFetch(
-        `/api/services/${service.id}/${service.is_published ? "unpublish" : "publish"}`,
-        {
-          method: "POST",
-        },
-      );
-      addToast(
-        service.is_published ? "Service unpublished" : "Service published",
-        "success",
-      );
+      await apiFetch(`/api/services/${service.id}/${service.is_published ? "unpublish" : "publish"}`, { method: "POST" });
+      addToast(service.is_published ? "Service unpublished" : "Service published", "success");
       await loadWorkspace();
     } catch (toggleError) {
       addToast(getErrorMessage(toggleError, "Failed to update service status"), "error");
     } finally {
       setPublishingServiceId(null);
+    }
+  }
+
+  async function handleDeleteService(service: Service) {
+    if (!window.confirm(`Delete "${service.name}"? This cannot be undone.`)) return;
+    setDeletingServiceId(service.id);
+    try {
+      await apiFetch(`/api/services/${service.id}`, { method: "DELETE" });
+      addToast("Service deleted", "success");
+      await loadWorkspace();
+    } catch (e) {
+      addToast(getErrorMessage(e, "Failed to delete service"), "error");
+    } finally {
+      setDeletingServiceId(null);
+    }
+  }
+
+  async function handleEditService(event: React.FormEvent) {
+    event.preventDefault();
+    if (!editingService || !validateService()) return;
+    setIsSubmittingService(true);
+    try {
+      await apiFetch(`/api/services/${editingService.id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          name: serviceForm.name.trim(),
+          description: serviceForm.description.trim() || null,
+          duration_minutes: Number(serviceForm.duration_minutes),
+          capacity: Number(serviceForm.capacity),
+          max_bookings_per_user: Number(serviceForm.max_bookings_per_user) || null,
+          requires_advance_payment: serviceForm.requires_advance_payment,
+          advance_payment_amount: serviceForm.requires_advance_payment ? Number(serviceForm.advance_payment_amount) || 0 : null,
+        }),
+      });
+      setEditingService(null);
+      setServiceForm({ name: "", description: "", duration_minutes: 30, capacity: 1, is_published: true, max_bookings_per_user: 1, requires_advance_payment: false, advance_payment_amount: 0 });
+      addToast("Service updated successfully", "success");
+      await loadWorkspace();
+    } catch (e) {
+      addToast(getErrorMessage(e, "Failed to update service"), "error");
+    } finally {
+      setIsSubmittingService(false);
+    }
+  }
+
+  function startEditingService(service: Service) {
+    setEditingService(service);
+    setServiceForm({
+      name: service.name,
+      description: service.description || "",
+      duration_minutes: service.duration_minutes,
+      capacity: service.capacity,
+      is_published: service.is_published,
+      max_bookings_per_user: service.max_bookings_per_user || 1,
+      requires_advance_payment: service.requires_advance_payment,
+      advance_payment_amount: service.advance_payment_amount || 0,
+    });
+    setOpenSections((p) => ({ ...p, service: true }));
+  }
+
+  function cancelEditingService() {
+    setEditingService(null);
+    setServiceForm({ name: "", description: "", duration_minutes: 30, capacity: 1, is_published: true, max_bookings_per_user: 1, requires_advance_payment: false, advance_payment_amount: 0 });
+  }
+
+  async function handleCopyShareableLink(service: Service) {
+    try {
+      if (!service.shareable_link) {
+        const updated = await apiFetch<Service>(`/api/services/${service.id}/shareable-link`, { method: "POST" });
+        service = updated;
+      }
+      const link = `${window.location.origin}/book/${service.shareable_link}`;
+      await navigator.clipboard.writeText(link);
+      setCopiedLinkId(service.id);
+      addToast("Link copied to clipboard", "success");
+      setTimeout(() => setCopiedLinkId(null), 2000);
+      await loadWorkspace();
+    } catch (e) {
+      addToast(getErrorMessage(e, "Failed to copy link"), "error");
+    }
+  }
+
+  // Form questions handlers
+  async function loadFormQuestions(serviceId: number) {
+    try {
+      const questions = await apiFetch<FormQuestion[]>(`/api/services/${serviceId}/form-questions`);
+      setFormQuestionsByService((p) => ({ ...p, [serviceId]: questions }));
+    } catch { /* ignore */ }
+  }
+
+  async function handleQuestionSubmit(serviceId: number) {
+    setIsSubmittingQuestion(true);
+    try {
+      const body = {
+        question_text: questionForm.question_text.trim(),
+        field_type: questionForm.field_type,
+        is_required: questionForm.is_required,
+        options: questionForm.options.trim() || null,
+        display_order: questionForm.display_order,
+      };
+      if (editingQuestionId) {
+        await apiFetch(`/api/services/${serviceId}/form-questions/${editingQuestionId}`, { method: "PUT", body: JSON.stringify(body) });
+        addToast("Question updated", "success");
+      } else {
+        await apiFetch(`/api/services/${serviceId}/form-questions`, { method: "POST", body: JSON.stringify(body) });
+        addToast("Question added", "success");
+      }
+      setQuestionForm({ question_text: "", field_type: "TEXT", is_required: false, options: "", display_order: 0 });
+      setEditingQuestionId(null);
+      await loadFormQuestions(serviceId);
+    } catch (e) {
+      addToast(getErrorMessage(e, "Failed to save question"), "error");
+    } finally {
+      setIsSubmittingQuestion(false);
+    }
+  }
+
+  async function handleDeleteQuestion(serviceId: number, questionId: number) {
+    try {
+      await apiFetch(`/api/services/${serviceId}/form-questions/${questionId}`, { method: "DELETE" });
+      addToast("Question deleted", "success");
+      await loadFormQuestions(serviceId);
+    } catch (e) {
+      addToast(getErrorMessage(e, "Failed to delete question"), "error");
     }
   }
 
@@ -1272,23 +1402,26 @@ export default function OrganizerWorkspacePage() {
                     )}
                   </div>
 
-                  <button
-                    onClick={handleServiceSubmit}
-                    disabled={isSubmittingService}
-                    className="w-full rounded-full bg-white hover:bg-slate-200 disabled:opacity-60 disabled:cursor-not-allowed text-slate-950 px-4 py-2 text-sm font-semibold transition-colors flex items-center justify-center gap-2"
-                  >
-                    {isSubmittingService ? (
-                      <>
-                        <Loader2 className="size-4 animate-spin" />
-                        Creating...
-                      </>
-                    ) : (
-                      <>
-                        <Plus className="size-4" />
-                        Create Service
-                      </>
+                  <div className="flex gap-3">
+                    {editingService && (
+                      <button onClick={cancelEditingService} className="flex-1 rounded-full border border-white/15 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/10 flex items-center justify-center gap-2">
+                        <X className="size-4" /> Cancel
+                      </button>
                     )}
-                  </button>
+                    <button
+                      onClick={editingService ? handleEditService : handleServiceSubmit}
+                      disabled={isSubmittingService}
+                      className="flex-1 rounded-full bg-white hover:bg-slate-200 disabled:opacity-60 disabled:cursor-not-allowed text-slate-950 px-4 py-2 text-sm font-semibold transition-colors flex items-center justify-center gap-2"
+                    >
+                      {isSubmittingService ? (
+                        <><Loader2 className="size-4 animate-spin" /> Saving...</>
+                      ) : editingService ? (
+                        <><Check className="size-4" /> Update Service</>
+                      ) : (
+                        <><Plus className="size-4" /> Create Service</>
+                      )}
+                    </button>
+                  </div>
                 </>
               ) : (
                 <div className="rounded-2xl border border-dashed border-white/10 bg-slate-950/40 p-4 text-center">
@@ -1334,34 +1467,74 @@ export default function OrganizerWorkspacePage() {
                               {service.is_published ? "Published" : "Draft"}
                             </span>
                           </div>
-                          <p className="text-sm text-slate-300 line-clamp-1">
-                            {service.description || "No description"}
-                          </p>
-                          <p className="text-xs text-slate-400 mt-2">
-                            {service.duration_minutes}min · {service.capacity} capacity
-                          </p>
+                          <p className="text-sm text-slate-300 line-clamp-1">{service.description || "No description"}</p>
+                          <p className="text-xs text-slate-400 mt-2">{service.duration_minutes}min · {service.capacity} capacity</p>
                         </div>
-                        <button
-                          onClick={() => void handlePublishToggle(service)}
-                          disabled={publishingServiceId === service.id}
-                          className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors disabled:opacity-50 ${
-                            service.is_published
-                              ? "border border-white/15 hover:bg-white/10 text-white"
-                              : "bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30"
-                          }`}
-                        >
-                          {publishingServiceId === service.id ? "..." : service.is_published ? "Unpublish" : "Publish"}
-                        </button>
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          <button onClick={() => startEditingService(service)} title="Edit" className="p-2 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors"><Edit3 className="size-3.5" /></button>
+                          <button onClick={() => void handleCopyShareableLink(service)} title="Copy link" className="p-2 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors">{copiedLinkId === service.id ? <Check className="size-3.5 text-emerald-400" /> : <Link2 className="size-3.5" />}</button>
+                          <button onClick={() => { setEditingQuestionServiceId(editingQuestionServiceId === service.id ? null : service.id); if (editingQuestionServiceId !== service.id) void loadFormQuestions(service.id); }} title="Form questions" className={`p-2 rounded-xl hover:bg-white/10 transition-colors ${editingQuestionServiceId === service.id ? 'text-sky-400' : 'text-slate-400 hover:text-white'}`}><FileText className="size-3.5" /></button>
+                          <button onClick={() => void handlePublishToggle(service)} disabled={publishingServiceId === service.id} className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors disabled:opacity-50 ${service.is_published ? "border border-white/15 hover:bg-white/10 text-white" : "bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30"}`}>
+                            {publishingServiceId === service.id ? "..." : service.is_published ? "Unpublish" : "Publish"}
+                          </button>
+                          <button onClick={() => void handleDeleteService(service)} disabled={deletingServiceId === service.id} title="Delete" className="p-2 rounded-xl hover:bg-red-500/20 text-slate-400 hover:text-red-300 transition-colors disabled:opacity-50"><Trash2 className="size-3.5" /></button>
+                        </div>
                       </div>
                       {(serviceResourcesById[service.id] || []).length > 0 && (
-                        <div className="flex flex-wrap gap-1">
+                        <div className="flex flex-wrap gap-1 mb-2">
                           {(serviceResourcesById[service.id] || []).map((r) => (
-                            <span key={r.id} className="text-xs px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300">
-                              {r.name}
-                            </span>
+                            <span key={r.id} className="text-xs px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300">{r.name}</span>
                           ))}
                         </div>
                       )}
+
+                      {/* Form Questions Builder (inline, toggled per service) */}
+                      <AnimatePresence>
+                        {editingQuestionServiceId === service.id && (
+                          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+                            <div className="mt-3 pt-3 border-t border-white/10 space-y-3">
+                              <p className="text-xs uppercase tracking-widest text-slate-400">Custom Booking Questions</p>
+                              {(formQuestionsByService[service.id] || []).map((q) => (
+                                <div key={q.id} className="flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm text-white truncate">{q.question_text} {q.is_required && <span className="text-red-400">*</span>}</p>
+                                    <p className="text-xs text-slate-400">{q.field_type} · Order {q.display_order}</p>
+                                  </div>
+                                  <div className="flex gap-1">
+                                    <button onClick={() => { setEditingQuestionId(q.id); setQuestionForm({ question_text: q.question_text, field_type: q.field_type, is_required: q.is_required, options: q.options || "", display_order: q.display_order }); }} className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white"><Edit3 className="size-3" /></button>
+                                    <button onClick={() => void handleDeleteQuestion(service.id, q.id)} className="p-1.5 rounded-lg hover:bg-red-500/20 text-slate-400 hover:text-red-300"><Trash2 className="size-3" /></button>
+                                  </div>
+                                </div>
+                              ))}
+                              <div className="rounded-xl border border-white/10 bg-slate-950/60 p-3 space-y-2">
+                                <input value={questionForm.question_text} onChange={(e) => setQuestionForm((p) => ({ ...p, question_text: e.target.value }))} placeholder="Question text" className="w-full rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white outline-none focus:border-sky-400" />
+                                <div className="flex gap-2">
+                                  <select value={questionForm.field_type} onChange={(e) => setQuestionForm((p) => ({ ...p, field_type: e.target.value }))} className="flex-1 rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white outline-none">
+                                    <option value="TEXT">Short Text</option>
+                                    <option value="TEXTAREA">Long Text</option>
+                                    <option value="CHECKBOX">Checkbox</option>
+                                    <option value="SELECT">Dropdown</option>
+                                    <option value="DATE">Date</option>
+                                    <option value="EMAIL">Email</option>
+                                    <option value="PHONE">Phone</option>
+                                  </select>
+                                  <input value={questionForm.display_order} onChange={(e) => setQuestionForm((p) => ({ ...p, display_order: Number(e.target.value) }))} type="number" placeholder="Order" className="w-20 rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white outline-none" />
+                                </div>
+                                {(questionForm.field_type === "SELECT") && (
+                                  <input value={questionForm.options} onChange={(e) => setQuestionForm((p) => ({ ...p, options: e.target.value }))} placeholder='Options (JSON: ["A","B","C"])' className="w-full rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white outline-none" />
+                                )}
+                                <div className="flex items-center justify-between">
+                                  <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer"><input type="checkbox" checked={questionForm.is_required} onChange={(e) => setQuestionForm((p) => ({ ...p, is_required: e.target.checked }))} /> Required</label>
+                                  <div className="flex gap-2">
+                                    {editingQuestionId && <button onClick={() => { setEditingQuestionId(null); setQuestionForm({ question_text: "", field_type: "TEXT", is_required: false, options: "", display_order: 0 }); }} className="px-3 py-1 rounded-full text-xs text-white border border-white/15 hover:bg-white/10">Cancel</button>}
+                                    <button onClick={() => void handleQuestionSubmit(service.id)} disabled={isSubmittingQuestion || !questionForm.question_text.trim()} className="px-3 py-1 rounded-full text-xs font-semibold bg-sky-400 text-slate-950 hover:bg-sky-300 disabled:opacity-50">{isSubmittingQuestion ? "..." : editingQuestionId ? "Update" : "Add Question"}</button>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </motion.div>
                   ))}
                 </div>
@@ -1393,9 +1566,9 @@ export default function OrganizerWorkspacePage() {
                           {servicesById[appointment.service_id]?.name || `Service #${appointment.service_id}`}
                         </p>
                         <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0 ${
-                          appointment.status === "confirmed"
+                          appointment.status === "CONFIRMED"
                             ? "bg-emerald-500/20 text-emerald-300"
-                            : appointment.status === "cancelled"
+                            : appointment.status === "CANCELLED"
                               ? "bg-red-500/20 text-red-300"
                               : "bg-amber-500/20 text-amber-300"
                         }`}>

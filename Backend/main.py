@@ -695,6 +695,14 @@ def get_manageable_services_query(current_user: User, db: Session):
     return query
 
 
+def get_manageable_service_or_404(service_id: int, current_user: User, db: Session) -> Service:
+    """Fetch a service only if the current organizer/admin is allowed to manage it."""
+    service = get_manageable_services_query(current_user, db).filter(Service.id == service_id).first()
+    if not service:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service not found")
+    return service
+
+
 def get_manageable_service_ids(current_user: User, db: Session) -> List[int]:
     """Return service IDs visible to the current organizer/admin."""
     return [service.id for service in get_manageable_services_query(current_user, db).all()]
@@ -1852,6 +1860,15 @@ def list_organizer_services(
     return services
 
 
+@app.get("/api/organizer/services/{service_id}", response_model=ServiceResponse)
+def get_organizer_service(
+    service_id: int,
+    current_user: User = Depends(require_role("ORGANIZER", "ADMIN")),
+    db: Session = Depends(get_db)
+):
+    return get_manageable_service_or_404(service_id, current_user, db)
+
+
 @app.get("/api/services/{service_id}", response_model=ServiceResponse)
 def get_service(service_id: int, db: Session = Depends(get_db)):
     return get_service_or_404(service_id, db, require_published=True)
@@ -1977,6 +1994,20 @@ def get_service_resources(service_id: int, db: Session = Depends(get_db)):
         Resource.is_active.is_(True),
     ).all()
     return [ResourceResponse.from_orm(r) for r in resources]
+
+
+@app.get("/api/organizer/services/{service_id}/resources", response_model=List[ServiceResourceResponse])
+def get_organizer_service_resources(
+    service_id: int,
+    current_user: User = Depends(require_role("ORGANIZER", "ADMIN")),
+    db: Session = Depends(get_db)
+):
+    """Get raw resource assignments for a manageable service, including draft services."""
+    get_manageable_service_or_404(service_id, current_user, db)
+    assignments = db.query(ServiceResource).filter(
+        ServiceResource.service_id == service_id
+    ).order_by(ServiceResource.created_at.asc()).all()
+    return [ServiceResourceResponse.from_orm(assignment) for assignment in assignments]
 
 
 @app.get("/api/services/{service_id}/availability")
@@ -2108,6 +2139,20 @@ def get_form_questions(service_id: int, db: Session = Depends(get_db)):
     questions = db.query(BookingFormQuestion).filter(
         BookingFormQuestion.service_id == service_id
     ).order_by(BookingFormQuestion.display_order).all()
+    return [FormQuestionResponse.from_orm(q) for q in questions]
+
+
+@app.get("/api/organizer/services/{service_id}/form-questions", response_model=List[FormQuestionResponse])
+def get_organizer_form_questions(
+    service_id: int,
+    current_user: User = Depends(require_role("ORGANIZER", "ADMIN")),
+    db: Session = Depends(get_db)
+):
+    """Get custom form questions for a manageable service, including draft services."""
+    get_manageable_service_or_404(service_id, current_user, db)
+    questions = db.query(BookingFormQuestion).filter(
+        BookingFormQuestion.service_id == service_id
+    ).order_by(BookingFormQuestion.display_order.asc(), BookingFormQuestion.id.asc()).all()
     return [FormQuestionResponse.from_orm(q) for q in questions]
 
 

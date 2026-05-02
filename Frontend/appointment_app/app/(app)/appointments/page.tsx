@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
+  Suspense,
   useCallback,
   useDeferredValue,
   useEffect,
@@ -121,7 +122,7 @@ type AppointmentCardProps = {
   isAdmin: boolean;
   actionError?: string;
   onToggleSelected: (appointmentId: number) => void;
-  registerRef: (node: HTMLElement | null) => void;
+  registerRef?: (node: HTMLElement | null) => void;
 };
 
 type FilterBarProps = {
@@ -323,6 +324,14 @@ function getAppointmentServiceName(
     servicesById[appointment.service_id]?.name ??
     confirmationById[appointment.id]?.service_name ??
     `Service #${appointment.service_id}`
+  );
+}
+
+export default function AppointmentsPage() {
+  return (
+    <Suspense fallback={<AppointmentsPageFallback />}>
+      <AppointmentsPageContent />
+    </Suspense>
   );
 }
 
@@ -1242,7 +1251,16 @@ function AppointmentCard({
   );
 }
 
-export default function AppointmentsPage() {
+function AppointmentsPageFallback() {
+  return (
+    <div className="space-y-6">
+      <div className="h-32 animate-pulse rounded-[32px] border border-white/10 bg-white/[0.04]" />
+      <div className="h-[620px] animate-pulse rounded-[32px] border border-white/10 bg-white/[0.04]" />
+    </div>
+  );
+}
+
+function AppointmentsPageContent() {
   const { user, isOrganizer } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
@@ -1284,7 +1302,7 @@ export default function AppointmentsPage() {
     (patch: Partial<Record<string, string | null>>, options?: { preservePage?: boolean }) => {
       const next = new URLSearchParams(searchParams.toString());
       Object.entries(patch).forEach(([key, value]) => {
-        if (value === null || value === "") {
+        if (value == null || value === "") {
           next.delete(key);
         } else {
           next.set(key, value);

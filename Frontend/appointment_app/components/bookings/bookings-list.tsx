@@ -17,8 +17,18 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cancelBooking } from "@/lib/actions/calendar";
-import type { HostBooking } from "@/sanity/queries/bookings";
 import type { AttendeeStatus } from "@/components/calendar/types";
+
+interface HostBooking {
+  _id: string;
+  guestName: string;
+  guestEmail: string;
+  startTime: string;
+  endTime: string;
+  notes?: string;
+  meetLink?: string;
+  googleEventId?: string;
+}
 
 type BookingWithStatuses = HostBooking & {
   guestStatus?: AttendeeStatus;

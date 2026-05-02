@@ -6,21 +6,33 @@ import { ChevronDown, LogOut, Settings2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
 
-const navItems = [
-  { href: "/dashboard/availability", label: "Availability" },
-  { href: "/appointments", label: "Bookings" },
-  { href: "/feedback", label: "Feedback" },
-  { href: "/settings", label: "Settings" },
+const baseNavItems = [
+  { href: "/dashboard", label: "Dashboard" },
+];
+
+const organizerNavItems = [
+  { href: "/organizer", label: "Workspace" },
+  { href: "/organizer/services", label: "Services" },
+];
+
+const adminNavItems = [
+  { href: "/admin", label: "Admin" },
 ];
 
 export function AppHeader() {
   const pathname = usePathname();
-  const { user, logout } = useAuth();
+  const { user, logout, isOrganizer, isAdmin } = useAuth();
   const router = useRouter();
+  const navItems = [
+    ...baseNavItems,
+    ...(isOrganizer ? organizerNavItems : []),
+    ...(isAdmin ? adminNavItems : []),
+  ];
 
   const handleLogout = async () => {
     await logout();
-    router.push("/auth/login");
+    // After logout send users to the public home page
+    router.push("/");
   };
 
   const initials =

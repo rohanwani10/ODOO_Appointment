@@ -81,26 +81,11 @@ export function AccountManager({
             </p>
           )}
         </div>
-        {isAtLimit ? (
-          <Button asChild>
-            <Link href="/pricing">
-              Unlock more
-              <ArrowRight className="ml-1 h-4 w-4" />
-            </Link>
-          </Button>
-        ) : (
-          <Button onClick={handleConnect} disabled={isPending}>
-            <Plus className="mr-2 h-4 w-4" />
-            Connect Account
-          </Button>
-        )}
+        {/* Google Connect is disabled for this deployment; hide connect CTA */}
+        <div className="text-sm text-muted-foreground">Google Calendar sync is not enabled.</div>
       </div>
 
-      {connectMessage && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-          {connectMessage}
-        </div>
-      )}
+      {/* No connect message shown in this build */}
 
       {connectedAccounts.length === 0 ? (
         <div className="rounded-lg border border-dashed p-8 text-center">
@@ -117,9 +102,9 @@ export function AccountManager({
               className="flex items-center justify-between rounded-lg border p-4"
             >
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100">
-                  <FcGoogle className="h-5 w-5" />
-                </div>
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/6">
+                          <FcGoogle className="h-5 w-5" />
+                        </div>
                 <div>
                   <p className="font-medium">{account.email}</p>
                   {account.isDefault && (

@@ -235,7 +235,7 @@ function AnimatedBackground({ reduceMotion }: { reduceMotion: boolean }) {
         transition={
           reduceMotion
             ? { duration: 0 }
-            : { duration: 20, repeat: Infinity, ease: "linear" }
+            : { duration: 20, repeat: Infinity, ease: [0, 0, 1, 1] as const }
         }
         className="absolute -left-40 -top-40 size-[600px] rounded-full bg-primary/20 blur-[120px]"
       />
@@ -252,7 +252,7 @@ function AnimatedBackground({ reduceMotion }: { reduceMotion: boolean }) {
         transition={
           reduceMotion
             ? { duration: 0 }
-            : { duration: 15, repeat: Infinity, ease: "linear" }
+            : { duration: 15, repeat: Infinity, ease: [0, 0, 1, 1] as const }
         }
         className="absolute -bottom-40 -right-40 size-[500px] rounded-full bg-indigo-500/20 blur-[100px]"
       />
@@ -428,7 +428,7 @@ export default function RegisterForm({
     () => ({
       initial: shouldReduceMotion ? { opacity: 1, y: 0 } : { opacity: 0, y: 14 },
       animate: { opacity: 1, y: 0 },
-      transition: shouldReduceMotion ? { duration: 0 } : { duration: 0.28, ease: "easeOut" },
+      transition: shouldReduceMotion ? { duration: 0 } : { duration: 0.28, ease: [0, 0, 0.58, 1] as const },
     }),
     [shouldReduceMotion],
   );
@@ -480,7 +480,7 @@ export default function RegisterForm({
           <motion.div
             initial={shouldReduceMotion ? { opacity: 1 } : { opacity: 0, y: 20 }}
             animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
-            transition={{ duration: shouldReduceMotion ? 0 : 0.45, ease: "easeOut" }}
+            transition={{ duration: shouldReduceMotion ? 0 : 0.45, ease: [0, 0, 0.58, 1] as const }}
             className="w-full"
           >
             <Link
@@ -576,7 +576,7 @@ export default function RegisterForm({
                     <motion.div
                       {...fieldMotion}
                       transition={
-                        shouldReduceMotion ? { duration: 0 } : { duration: 0.28, ease: "easeOut", delay: 0.04 }
+                        shouldReduceMotion ? { duration: 0 } : { duration: 0.28, ease: [0, 0, 0.58, 1] as const, delay: 0.04 }
                       }
                     >
                       <FormField
@@ -602,7 +602,7 @@ export default function RegisterForm({
                   <motion.div
                     {...fieldMotion}
                     transition={
-                      shouldReduceMotion ? { duration: 0 } : { duration: 0.28, ease: "easeOut", delay: 0.08 }
+                      shouldReduceMotion ? { duration: 0 } : { duration: 0.28, ease: [0, 0, 0.58, 1] as const, delay: 0.08 }
                     }
                   >
                     <FormField
@@ -628,7 +628,7 @@ export default function RegisterForm({
                   <motion.div
                     {...fieldMotion}
                     transition={
-                      shouldReduceMotion ? { duration: 0 } : { duration: 0.28, ease: "easeOut", delay: 0.12 }
+                      shouldReduceMotion ? { duration: 0 } : { duration: 0.28, ease: [0, 0, 0.58, 1] as const, delay: 0.12 }
                     }
                   >
                     <FormField
@@ -650,7 +650,7 @@ export default function RegisterForm({
                   <motion.div
                     {...fieldMotion}
                     transition={
-                      shouldReduceMotion ? { duration: 0 } : { duration: 0.28, ease: "easeOut", delay: 0.16 }
+                      shouldReduceMotion ? { duration: 0 } : { duration: 0.28, ease: [0, 0, 0.58, 1] as const, delay: 0.16 }
                     }
                     className="space-y-2"
                   >
@@ -699,7 +699,7 @@ export default function RegisterForm({
                   <motion.div
                     {...fieldMotion}
                     transition={
-                      shouldReduceMotion ? { duration: 0 } : { duration: 0.28, ease: "easeOut", delay: 0.2 }
+                      shouldReduceMotion ? { duration: 0 } : { duration: 0.28, ease: [0, 0, 0.58, 1] as const, delay: 0.2 }
                     }
                   >
                     <button

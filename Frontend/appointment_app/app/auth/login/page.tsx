@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { Suspense, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Mail,
@@ -65,7 +65,7 @@ function AuthAnimatedBackground({ reduceMotion }: { reduceMotion: boolean }) {
         transition={
           reduceMotion
             ? { duration: 0 }
-            : { duration: 20, repeat: Infinity, ease: "linear" }
+            : { duration: 20, repeat: Infinity, ease: [0, 0, 1, 1] as const }
         }
         className="absolute -left-40 -top-40 size-[600px] rounded-full bg-primary/20 blur-[120px]"
       />
@@ -82,7 +82,7 @@ function AuthAnimatedBackground({ reduceMotion }: { reduceMotion: boolean }) {
         transition={
           reduceMotion
             ? { duration: 0 }
-            : { duration: 15, repeat: Infinity, ease: "linear" }
+            : { duration: 15, repeat: Infinity, ease: [0, 0, 1, 1] as const }
         }
         className="absolute -bottom-40 -right-40 size-[500px] rounded-full bg-indigo-500/20 blur-[100px]"
       />
@@ -91,7 +91,17 @@ function AuthAnimatedBackground({ reduceMotion }: { reduceMotion: boolean }) {
   );
 }
 
-export default function LoginPage() {
+function LoginPageFallback() {
+  return (
+    <div className="relative min-h-screen overflow-hidden bg-background text-white">
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-t-2 border-sky-400" />
+      </div>
+    </div>
+  );
+}
+
+function LoginPageContent() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -186,7 +196,7 @@ export default function LoginPage() {
           <motion.div
             initial={shouldReduceMotion ? { opacity: 1 } : { opacity: 0, y: 20 }}
             animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
-            transition={{ duration: shouldReduceMotion ? 0 : 0.5, ease: "easeOut" }}
+            transition={{ duration: shouldReduceMotion ? 0 : 0.5, ease: [0, 0, 0.58, 1] as const }}
             className="w-full max-w-md"
           >
             <div className="mb-6 flex justify-center sm:mb-8">
@@ -408,5 +418,13 @@ export default function LoginPage() {
         </main>
       </div>
     </MotionConfig>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginPageFallback />}>
+      <LoginPageContent />
+    </Suspense>
   );
 }
