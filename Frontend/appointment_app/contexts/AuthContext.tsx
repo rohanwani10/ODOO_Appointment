@@ -10,7 +10,7 @@ import {
 } from "react";
 import { User, UserRole } from "@/types/user";
 import { apiFetch } from "@/lib/api";
-import { getAccessToken, removeTokens } from "@/lib/auth";
+import { getAccessToken, getRefreshToken, removeTokens } from "@/lib/auth";
 
 interface AuthContextValue {
   user: User | null;
@@ -21,8 +21,8 @@ interface AuthContextValue {
   isOrganizer: boolean;
   /** Re-fetch the current user (e.g. after profile update). */
   refreshUser: () => Promise<void>;
-  /** Clear local state and tokens (logout). */
-  logout: () => void;
+  /** Revoke the session server-side, then clear local state and tokens. */
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -59,9 +59,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [user],
   );
 
-  const logout = useCallback(() => {
-    removeTokens();
-    setUser(null);
+  const logout = useCallback(async () => {
+    const accessToken = getAccessToken();
+    const refreshToken = getRefreshToken();
+
+    try {
+      if (accessToken && refreshToken) {
+        await apiFetch("/api/auth/logout", {
+          method: "POST",
+          body: JSON.stringify({ refresh_token: refreshToken }),
+        });
+      }
+    } catch (error) {
+      console.error("Failed to revoke session during logout", error);
+    } finally {
+      removeTokens();
+      setUser(null);
+    }
   }, []);
 
   const refreshUser = useCallback(async () => {
@@ -75,7 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isAuthenticated: !!user,
     hasRole,
     isAdmin: hasRole("ADMIN"),
-    isOrganizer: hasRole("ORGANIZER"),
+    isOrganizer: hasRole("ORGANIZER") || hasRole("ADMIN"),
     refreshUser,
     logout,
   };

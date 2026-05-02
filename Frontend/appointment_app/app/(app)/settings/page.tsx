@@ -1,10 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
+import { useAuth } from "@/hooks/useAuth";
 import { User } from "@/types/user";
 
 export default function SettingsPage() {
+  const router = useRouter();
+  const { logout } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [savingProfile, setSavingProfile] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
@@ -83,8 +87,10 @@ export default function SettingsPage() {
         body: JSON.stringify(passwordForm),
       });
 
-      setPasswordMessage("Password changed. You should log in again.");
+      setPasswordMessage("Password changed. Redirecting to login...");
       setPasswordForm({ current_password: "", new_password: "" });
+      await logout();
+      router.replace("/auth/login");
     } catch (error: any) {
       setPasswordError(error.message || "Failed to change password.");
     } finally {

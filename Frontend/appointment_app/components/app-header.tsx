@@ -19,8 +19,8 @@ export function AppHeader() {
   const { user, isOrganizer, isAdmin, logout } = useAuth();
   const router = useRouter();
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     router.push("/auth/login");
   };
 
@@ -80,7 +80,7 @@ export function AppHeader() {
               </span>
             </div>
             <button
-              onClick={handleLogout}
+              onClick={() => void handleLogout()}
               className="rounded-full border border-white/10 px-3 py-2 text-sm text-white/80 transition-colors hover:bg-white/10 hover:text-white"
               title="Logout"
             >

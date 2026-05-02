@@ -42,6 +42,14 @@ async function readApiError(response: Response) {
   }
 }
 
+async function readApiResponse<T>(response: Response): Promise<T> {
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  return response.json() as Promise<T>;
+}
+
 export async function apiFetch<T>(endpoint: string, options: FetchOptions = {}): Promise<T> {
   const { params, ...init } = options;
 
@@ -104,10 +112,7 @@ export async function apiFetch<T>(endpoint: string, options: FetchOptions = {}):
             if (!retryResponse.ok) {
               throw new Error(await readApiError(retryResponse));
             }
-            if (retryResponse.status === 204) {
-              return undefined as T;
-            }
-            return retryResponse.json() as Promise<T>;
+            return readApiResponse<T>(retryResponse);
           } else {
             isRefreshing = false;
             removeTokens();
@@ -128,9 +133,11 @@ export async function apiFetch<T>(endpoint: string, options: FetchOptions = {}):
         subscribeTokenRefresh((newToken) => {
           headers.set('Authorization', `Bearer ${newToken}`);
           fetch(url, { ...init, headers })
-            .then((res) => {
-              if (!res.ok) throw new Error(`API Error: ${res.status}`);
-              return res.json() as Promise<T>;
+            .then(async (res) => {
+              if (!res.ok) {
+                throw new Error(await readApiError(res));
+              }
+              return readApiResponse<T>(res);
             })
             .then(resolve)
             .catch(reject);
@@ -142,11 +149,7 @@ export async function apiFetch<T>(endpoint: string, options: FetchOptions = {}):
       throw new Error(await readApiError(response));
     }
 
-    if (response.status === 204) {
-      return undefined as T;
-    }
-
-    return response.json();
+    return readApiResponse<T>(response);
   } catch (error) {
     console.error('Fetch error:', error);
     throw error;
