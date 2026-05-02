@@ -188,9 +188,9 @@ function BookingVisual() {
               </div>
 
               <div className="grid grid-cols-7 gap-2">
-                {["S", "M", "T", "W", "T", "F", "S"].map((day) => (
+                {["S", "M", "T", "W", "T", "F", "S"].map((day, index) => (
                   <div
-                    key={day}
+                    key={index}
                     className="pb-2 text-center text-[0.65rem] uppercase tracking-[0.25em] text-slate-500"
                   >
                     {day}

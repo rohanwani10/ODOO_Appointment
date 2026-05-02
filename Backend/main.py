@@ -21,7 +21,7 @@ from database import engine, get_db, Base
 from models import (
     User, UserRole, RefreshToken, Organization, Service, Resource,
     ServiceResource, Appointment, BookingFormQuestion, BookingFormResponse,
-    ResourceWorkingHours, ResourceUnavailability
+    ResourceWorkingHours, ResourceUnavailability, AuditLog
 )
 from email_service import email_service
 from auth import (
@@ -140,6 +140,48 @@ class OrganizationResponse(BaseModel):
         from_attributes = True
 
 
+class OrganizationCreateRequestAdmin(BaseModel):
+    name: str
+    description: Optional[str] = None
+    admin_user_id: Optional[int] = None
+    logo_url: Optional[str] = None
+
+
+class OrganizationUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    admin_user_id: Optional[int] = None
+    logo_url: Optional[str] = None
+
+
+class UserAdminUpdateRequest(BaseModel):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    phone: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class ResourceAdminUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    capacity: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
+class AuditLogResponse(BaseModel):
+    id: int
+    user_id: Optional[int]
+    entity_type: str
+    entity_id: str
+    action: str
+    changes: Optional[str]
+    ip_address: Optional[str]
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 # ==================== Phase 2: Pydantic Models (Services & Appointments) ====================
 class ServiceResponse(BaseModel):
     id: int
@@ -221,6 +263,7 @@ class ResourceUpdateRequest(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     capacity: Optional[int] = None
+    is_active: Optional[bool] = None
 
 
 class ResourceResponse(BaseModel):
@@ -230,6 +273,7 @@ class ResourceResponse(BaseModel):
     type: str
     description: Optional[str]
     capacity: int
+    is_active: bool
     created_at: datetime
 
     class Config:
@@ -372,7 +416,7 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Change to specific origins in production
+    allow_origins=settings.CORS_ORIGINS.split(",") if settings.CORS_ORIGINS != "*" else ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -388,7 +432,6 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 @app.on_event("startup")
 def startup():
-    """Create database tables on startup."""
     Base.metadata.create_all(bind=engine)
     print("✅ Database tables created successfully!")
 
@@ -467,6 +510,28 @@ def serialize_datetime(value: Optional[datetime]) -> Optional[str]:
     if value is None:
         return None
     return normalize_datetime_to_utc(value).isoformat().replace("+00:00", "Z")
+
+
+def create_audit_log(
+    db: Session,
+    user_id: Optional[int],
+    entity_type: str,
+    entity_id: Any,
+    action: str,
+    changes: Optional[dict] = None,
+    ip_address: Optional[str] = None,
+) -> None:
+    """Create a lightweight audit log entry for admin actions."""
+    import json
+
+    db.add(AuditLog(
+        user_id=user_id,
+        entity_type=entity_type,
+        entity_id=str(entity_id),
+        action=action,
+        changes=json.dumps(changes) if changes is not None else None,
+        ip_address=ip_address,
+    ))
 
 
 # ==================== Phase 1: Authentication Endpoints ====================
@@ -1075,6 +1140,59 @@ def soft_delete_user_endpoint(
     return {"message": "User deleted successfully"}
 
 
+@app.put("/api/admin/users/{user_id}", response_model=UserDetailResponse)
+def update_admin_user(
+    user_id: int,
+    request: UserAdminUpdateRequest,
+    current_user: User = Depends(require_role("ADMIN")),
+    db: Session = Depends(get_db)
+):
+    """Update user details (Admin only)."""
+    user = get_user_by_id(user_id, db)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    before = {
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "phone": user.phone,
+        "is_active": user.is_active,
+    }
+
+    if request.first_name is not None:
+        user.first_name = request.first_name  # type: ignore[assignment]
+    if request.last_name is not None:
+        user.last_name = request.last_name  # type: ignore[assignment]
+    if request.phone is not None:
+        user.phone = request.phone  # type: ignore[assignment]
+    if request.is_active is not None:
+        user.is_active = request.is_active  # type: ignore[assignment]
+
+    user.updated_at = datetime.now(timezone.utc)  # type: ignore[assignment]
+    db.commit()
+    db.refresh(user)
+
+    create_audit_log(
+        db=db,
+        user_id=current_user.id,
+        entity_type="USER",
+        entity_id=user.id,
+        action="UPDATE",
+        changes={"before": before, "after": {
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "phone": user.phone,
+            "is_active": user.is_active,
+        }},
+    )
+    db.commit()
+
+    roles = get_user_roles(user.id, db)
+    user_data = UserResponse.from_orm(user).dict()
+    user_data["roles"] = roles
+    return UserDetailResponse(**user_data)
+
+
 # ==================== Phase 2: Organization Endpoints ====================
 
 
@@ -1105,6 +1223,160 @@ def create_organization(
     db.commit()
     db.refresh(organization)
     return organization
+
+
+@app.get("/api/admin/organizations", response_model=List[OrganizationResponse])
+def admin_list_organizations(
+    current_user: User = Depends(require_role("ADMIN")),
+    db: Session = Depends(get_db)
+):
+    organizations = db.query(Organization).filter(Organization.deleted_at.is_(None)).order_by(Organization.created_at.desc()).all()
+    return [OrganizationResponse.from_orm(org) for org in organizations]
+
+
+@app.post("/api/admin/organizations", response_model=OrganizationResponse, status_code=201)
+def admin_create_organization(
+    request: OrganizationCreateRequestAdmin,
+    current_user: User = Depends(require_role("ADMIN")),
+    db: Session = Depends(get_db)
+):
+    admin_user_id = request.admin_user_id or current_user.id
+    admin_user = get_user_by_id(admin_user_id, db)
+    if not admin_user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Admin user not found")
+
+    organization = Organization(
+        name=request.name,
+        description=request.description,
+        admin_user_id=admin_user_id,
+        logo_url=request.logo_url,
+    )
+    db.add(organization)
+    db.commit()
+    db.refresh(organization)
+    create_audit_log(db, current_user.id, "ORGANIZATION", organization.id, "CREATE", {"name": request.name, "admin_user_id": admin_user_id})
+    db.commit()
+    return organization
+
+
+@app.put("/api/admin/organizations/{org_id}", response_model=OrganizationResponse)
+def admin_update_organization(
+    org_id: int,
+    request: OrganizationUpdateRequest,
+    current_user: User = Depends(require_role("ADMIN")),
+    db: Session = Depends(get_db)
+):
+    organization = db.query(Organization).filter(Organization.id == org_id, Organization.deleted_at.is_(None)).first()
+    if not organization:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
+
+    before = {
+        "name": organization.name,
+        "description": organization.description,
+        "admin_user_id": organization.admin_user_id,
+        "logo_url": organization.logo_url,
+    }
+
+    if request.name is not None:
+        organization.name = request.name  # type: ignore[assignment]
+    if request.description is not None:
+        organization.description = request.description  # type: ignore[assignment]
+    if request.logo_url is not None:
+        organization.logo_url = request.logo_url  # type: ignore[assignment]
+    if request.admin_user_id is not None:
+        admin_user = get_user_by_id(request.admin_user_id, db)
+        if not admin_user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Admin user not found")
+        organization.admin_user_id = request.admin_user_id  # type: ignore[assignment]
+
+    organization.updated_at = datetime.now(timezone.utc)  # type: ignore[assignment]
+    db.commit()
+    db.refresh(organization)
+    create_audit_log(db, current_user.id, "ORGANIZATION", organization.id, "UPDATE", {"before": before, "after": {
+        "name": organization.name,
+        "description": organization.description,
+        "admin_user_id": organization.admin_user_id,
+        "logo_url": organization.logo_url,
+    }})
+    db.commit()
+    return organization
+
+
+@app.delete("/api/admin/organizations/{org_id}")
+def admin_delete_organization(
+    org_id: int,
+    current_user: User = Depends(require_role("ADMIN")),
+    db: Session = Depends(get_db)
+):
+    organization = db.query(Organization).filter(Organization.id == org_id, Organization.deleted_at.is_(None)).first()
+    if not organization:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
+    organization.deleted_at = datetime.now(timezone.utc)  # type: ignore[assignment]
+    db.commit()
+    create_audit_log(db, current_user.id, "ORGANIZATION", organization.id, "DELETE")
+    db.commit()
+    return {"message": "Organization deleted successfully"}
+
+
+@app.get("/api/admin/providers")
+def admin_list_providers(
+    current_user: User = Depends(require_role("ADMIN")),
+    db: Session = Depends(get_db)
+):
+    providers = db.query(Resource).filter(Resource.type == "PROVIDER", Resource.deleted_at.is_(None)).order_by(Resource.created_at.desc()).all()
+    return [ResourceResponse.from_orm(provider) for provider in providers]
+
+
+@app.get("/api/admin/providers/{provider_id}", response_model=ResourceResponse)
+def admin_get_provider(
+    provider_id: int,
+    current_user: User = Depends(require_role("ADMIN")),
+    db: Session = Depends(get_db)
+):
+    provider = db.query(Resource).filter(Resource.id == provider_id, Resource.type == "PROVIDER", Resource.deleted_at.is_(None)).first()
+    if not provider:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Provider not found")
+    return provider
+
+
+@app.put("/api/admin/providers/{provider_id}", response_model=ResourceResponse)
+def admin_update_provider(
+    provider_id: int,
+    request: ResourceAdminUpdateRequest,
+    current_user: User = Depends(require_role("ADMIN")),
+    db: Session = Depends(get_db)
+):
+    provider = db.query(Resource).filter(Resource.id == provider_id, Resource.type == "PROVIDER", Resource.deleted_at.is_(None)).first()
+    if not provider:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Provider not found")
+
+    before = {
+        "name": provider.name,
+        "description": provider.description,
+        "capacity": provider.capacity,
+        "is_active": provider.is_active,
+    }
+
+    if request.name is not None:
+        provider.name = request.name  # type: ignore[assignment]
+    if request.description is not None:
+        provider.description = request.description  # type: ignore[assignment]
+    if request.capacity is not None:
+        provider.capacity = request.capacity  # type: ignore[assignment]
+    if request.is_active is not None:
+        provider.is_active = request.is_active  # type: ignore[assignment]
+
+    provider.updated_at = datetime.now(timezone.utc)  # type: ignore[assignment]
+    db.commit()
+    db.refresh(provider)
+    create_audit_log(db, current_user.id, "RESOURCE", provider.id, "UPDATE", {"before": before, "after": {
+        "name": provider.name,
+        "description": provider.description,
+        "capacity": provider.capacity,
+        "is_active": provider.is_active,
+    }})
+    db.commit()
+    return provider
 
 
 # ==================== Phase 2: Services Endpoints ====================
@@ -1259,7 +1531,7 @@ def get_service_resources(service_id: int, db: Session = Depends(get_db)):
     resource_ids = [sr.resource_id for sr in sr_records]
     if not resource_ids:
         return []
-    resources = db.query(Resource).filter(Resource.id.in_(resource_ids), Resource.deleted_at.is_(None)).all()
+    resources = db.query(Resource).filter(Resource.id.in_(resource_ids), Resource.deleted_at.is_(None), Resource.is_active == True).all()
     return [ResourceResponse.from_orm(r) for r in resources]
 
 
@@ -1286,13 +1558,13 @@ def get_service_availability(
 
     # Determine which resources to check
     if resource_id:
-        resources = db.query(Resource).filter(Resource.id == resource_id, Resource.deleted_at.is_(None)).all()
+        resources = db.query(Resource).filter(Resource.id == resource_id, Resource.deleted_at.is_(None), Resource.is_active == True).all()
     else:
         sr_records = db.query(ServiceResource).filter(ServiceResource.service_id == service_id).all()
         r_ids = [sr.resource_id for sr in sr_records]
         if not r_ids:
             return []
-        resources = db.query(Resource).filter(Resource.id.in_(r_ids), Resource.deleted_at.is_(None)).all()
+        resources = db.query(Resource).filter(Resource.id.in_(r_ids), Resource.deleted_at.is_(None), Resource.is_active == True).all()
 
     all_slots = []
     for resource in resources:
@@ -2131,7 +2403,7 @@ def organizer_resource_utilization(
     if not org_ids:
         return []
 
-    resources = db.query(Resource).filter(Resource.organization_id.in_(org_ids), Resource.deleted_at.is_(None)).all()
+    resources = db.query(Resource).filter(Resource.organization_id.in_(org_ids), Resource.deleted_at.is_(None), Resource.is_active == True).all()
     result = []
     for r in resources:
         appts = db.query(Appointment).filter(
@@ -2309,6 +2581,84 @@ def reports_export(start_date: Optional[str] = None, end_date: Optional[str] = N
             buffer.truncate(0)
 
     return StreamingResponse(iter_csv(), media_type="text/csv")
+
+
+@app.get("/api/admin/dashboard")
+def admin_dashboard(current_user: User = Depends(require_role("ADMIN")), db: Session = Depends(get_db)):
+    """System-wide dashboard metrics for admins."""
+    total_users = db.query(User).filter(User.deleted_at.is_(None)).count()
+    total_organizations = db.query(Organization).filter(Organization.deleted_at.is_(None)).count()
+    total_services = db.query(Service).filter(Service.deleted_at.is_(None)).count()
+    total_resources = db.query(Resource).filter(Resource.deleted_at.is_(None)).count()
+    total_providers = db.query(Resource).filter(Resource.type == "PROVIDER", Resource.deleted_at.is_(None)).count()
+    total_appointments = db.query(Appointment).count()
+    upcoming_appointments = db.query(Appointment).filter(Appointment.start_time >= datetime.now(timezone.utc), Appointment.status != 'CANCELLED').count()
+
+    return {
+        "total_users": total_users,
+        "total_organizations": total_organizations,
+        "total_services": total_services,
+        "total_resources": total_resources,
+        "total_providers": total_providers,
+        "total_appointments": total_appointments,
+        "upcoming_appointments": upcoming_appointments,
+    }
+
+
+@app.get("/api/admin/reports/system-metrics")
+def admin_system_metrics(current_user: User = Depends(require_role("ADMIN")), db: Session = Depends(get_db)):
+    """High-level system metrics for admins."""
+    role_counts = {
+        "customers": db.query(UserRole).filter(UserRole.role == "CUSTOMER").count(),
+        "organizers": db.query(UserRole).filter(UserRole.role == "ORGANIZER").count(),
+        "admins": db.query(UserRole).filter(UserRole.role == "ADMIN").count(),
+    }
+    active_services = db.query(Service).filter(Service.deleted_at.is_(None), Service.is_published == True).count()
+    active_providers = db.query(Resource).filter(Resource.type == "PROVIDER", Resource.deleted_at.is_(None), Resource.is_active == True).count()
+    total_appointments = db.query(Appointment).count()
+    cancelled_appointments = db.query(Appointment).filter(Appointment.status == "CANCELLED").count()
+    return {
+        "role_counts": role_counts,
+        "active_services": active_services,
+        "active_providers": active_providers,
+        "total_appointments": total_appointments,
+        "cancelled_appointments": cancelled_appointments,
+    }
+
+
+@app.get("/api/admin/reports/audit-logs", response_model=List[AuditLogResponse])
+def admin_audit_logs(
+    entity_type: Optional[str] = None,
+    action: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 50,
+    current_user: User = Depends(require_role("ADMIN")),
+    db: Session = Depends(get_db)
+):
+    query = db.query(AuditLog)
+    if entity_type:
+        query = query.filter(AuditLog.entity_type == entity_type)
+    if action:
+        query = query.filter(AuditLog.action == action)
+    logs = query.order_by(AuditLog.created_at.desc()).offset(skip).limit(limit).all()
+    return logs
+
+
+@app.get("/api/admin/reports/revenue")
+def admin_revenue_report(current_user: User = Depends(require_role("ADMIN")), db: Session = Depends(get_db)):
+    """System-wide estimated revenue (best-effort) from services requiring advance payment."""
+    services = db.query(Service).filter(Service.deleted_at.is_(None)).all()
+    service_map = {service.id: service for service in services}
+    appts = db.query(Appointment).filter(Appointment.status != 'CANCELLED').all()
+    total = 0.0
+    for appointment in appts:
+        service = service_map.get(appointment.service_id)
+        if service and service.requires_advance_payment and service.advance_payment_amount:
+            try:
+                total += float(service.advance_payment_amount) * (appointment.capacity_used or 1)
+            except Exception:
+                pass
+    return {"revenue": round(total, 2)}
 
 
 # ==================== Health Check ====================
