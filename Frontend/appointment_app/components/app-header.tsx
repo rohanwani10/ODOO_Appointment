@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 
 const baseNavItems = [
   { href: "/dashboard", label: "Dashboard" },
+  { href: "/appointments", label: "Appointments" },
 ];
 
 const organizerNavItems = [

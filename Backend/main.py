@@ -438,6 +438,15 @@ class FormResponseSubmitRequest(BaseModel):
     responses: List[FormResponseItem]
 
 
+class FormResponseView(BaseModel):
+    id: int
+    appointment_id: int
+    question_id: int
+    question_text: str
+    response: str
+    created_at: datetime
+
+
 class RescheduleRequest(BaseModel):
     start_time: datetime
     end_time: datetime
@@ -2341,6 +2350,32 @@ def add_unavailability(resource_id: int, request: UnavailabilityCreateRequest, c
     return UnavailabilityResponse.from_orm(ua)
 
 
+@app.get("/api/resources/{resource_id}/unavailability", response_model=List[UnavailabilityResponse])
+def list_unavailability(resource_id: int, current_user: User = Depends(require_role("ORGANIZER", "ADMIN")), db: Session = Depends(get_db)):
+    """List unavailability periods for a resource."""
+    resource = get_resource_or_404(resource_id, db)
+    _verify_org_owner(current_user.id, resource.organization_id, db)
+    periods = db.query(ResourceUnavailability).filter(
+        ResourceUnavailability.resource_id == resource_id
+    ).order_by(ResourceUnavailability.start_date_time.desc()).all()
+    return [UnavailabilityResponse.from_orm(period) for period in periods]
+
+
+@app.delete("/api/resources/{resource_id}/unavailability/{unavailability_id}")
+def delete_unavailability(resource_id: int, unavailability_id: int, current_user: User = Depends(require_role("ORGANIZER", "ADMIN")), db: Session = Depends(get_db)):
+    """Delete an unavailability period for a resource."""
+    resource = get_resource_or_404(resource_id, db)
+    _verify_org_owner(current_user.id, resource.organization_id, db)
+    deleted = db.query(ResourceUnavailability).filter(
+        ResourceUnavailability.id == unavailability_id,
+        ResourceUnavailability.resource_id == resource_id,
+    ).delete()
+    db.commit()
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unavailability not found")
+    return {"message": "Unavailability deleted"}
+
+
 # ==================== Phase 2: Service-Resource Mapping ====================
 
 
@@ -2773,6 +2808,40 @@ def submit_form_responses(appointment_id: int, request: FormResponseSubmitReques
         created.append(fr)
     db.commit()
     return {"message": f"{len(created)} responses submitted"}
+
+
+@app.get("/api/appointments/{appointment_id}/form-responses", response_model=List[FormResponseView])
+def get_form_responses(appointment_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Get submitted form responses for an appointment."""
+    appt = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+    if not appt:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Appointment not found")
+
+    roles = get_user_roles(current_user.id, db)
+    if appt.customer_id != current_user.id:
+        service = db.query(Service).filter(Service.id == appt.service_id).first()
+        is_manageable = bool(service and service.created_by == current_user.id)
+        if "ADMIN" not in roles and not is_manageable:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+
+    responses = db.query(BookingFormResponse, BookingFormQuestion.question_text).join(
+        BookingFormQuestion,
+        BookingFormQuestion.id == BookingFormResponse.question_id,
+    ).filter(
+        BookingFormResponse.appointment_id == appointment_id
+    ).order_by(BookingFormResponse.created_at.asc()).all()
+
+    return [
+        FormResponseView(
+            id=response.id,  # type: ignore[arg-type]
+            appointment_id=response.appointment_id,  # type: ignore[arg-type]
+            question_id=response.question_id,  # type: ignore[arg-type]
+            question_text=question_text,
+            response=response.response,  # type: ignore[arg-type]
+            created_at=response.created_at,  # type: ignore[arg-type]
+        )
+        for response, question_text in responses
+    ]
 
 
 # ==================== Phase 3: Reports & Insights (Organizer) ====================

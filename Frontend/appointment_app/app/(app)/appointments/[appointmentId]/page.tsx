@@ -7,7 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { apiFetch } from "@/lib/api";
 import { formatDate, formatDateTime, formatTime, toDateInputValue } from "@/lib/dates";
 import { getErrorMessage } from "@/lib/errors";
-import type { Appointment } from "@/types/booking";
+import type { Appointment, BookingFormResponse } from "@/types/booking";
 import type { Resource } from "@/types/resource";
 import type { AvailableSlot, Service } from "@/types/service";
 import {
@@ -830,6 +830,7 @@ export default function AppointmentDetailPage() {
   const [service, setService] = useState<Service | null>(null);
   const [serviceName, setServiceName] = useState<string | null>(null);
   const [resourceName, setResourceName] = useState<string | null>(null);
+  const [formResponses, setFormResponses] = useState<BookingFormResponse[]>([]);
 
   // State: UI
   const [error, setError] = useState<string | null>(null);
@@ -914,6 +915,14 @@ export default function AppointmentDetailPage() {
         }
       } catch {
         // Fallback already handled above
+      }
+
+      // Fetch form responses
+      try {
+        const responses = await apiFetch<BookingFormResponse[]>(`/api/appointments/${appointmentId}/form-responses`);
+        setFormResponses(responses);
+      } catch (err) {
+        console.error("Failed to load form responses", err);
       }
     } catch (loadError) {
       const errorMsg = getErrorMessage(loadError, "Unable to load appointment.");
@@ -1435,6 +1444,27 @@ export default function AppointmentDetailPage() {
             )}
           </div>
         </div>
+
+        {/* Form Responses Section */}
+        {formResponses.length > 0 && (
+          <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur lg:col-span-2">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-semibold text-white">Booking Questions</h2>
+            </div>
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              {formResponses.map((resp) => (
+                <div key={resp.id} className="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500 mb-2">
+                    {resp.question_text || `Question #${resp.question_id}`}
+                  </p>
+                  <p className="text-sm leading-6 text-slate-200 whitespace-pre-wrap">
+                    {resp.response}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </motion.section>
 
       {/* Service Details Section */}
