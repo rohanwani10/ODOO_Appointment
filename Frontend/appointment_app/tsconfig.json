@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2017",
-    "lib": ["dom", "dom.iterable", "esnext"],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -19,7 +23,9 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": [
+        "./*"
+      ]
     }
   },
   "include": [
@@ -30,5 +36,24 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules",
+    "app/api/**",
+    "components/admin/feedback/**",
+    "components/admin/insights/**",
+    "components/calendar/**",
+    "components/booking/**",
+    "components/bookings/**",
+    "components/settings/**",
+    "components/feedback/**",
+    "components/landing/**",
+    "components/layout/**",
+    "components/providers/**",
+    "components/ui/**",
+    "features/**",
+    "hooks/useAvailability.ts",
+    "hooks/useBookings.ts",
+    "lib/actions/**",
+    "sanity/**"
+  ]
 }
