@@ -13,7 +13,7 @@ const features = [
     icon: Calendar,
     title: "Smart Availability",
     description:
-      "Set your availability with an intuitive drag-and-drop calendar. Create time blocks visually and let Calvero handle the rest.",
+      "Set your availability with an intuitive drag-and-drop calendar. Create time blocks visually and let MeetMint handle the rest.",
   },
   {
     icon: Video,
@@ -56,8 +56,8 @@ export function FeaturesSection() {
             Everything you need to manage your schedule
           </h2>
           <p className="mt-4 text-lg text-zinc-600 dark:text-zinc-400">
-            Powerful features designed to eliminate scheduling friction and
-            help you focus on what matters.
+            Powerful features designed to eliminate scheduling friction and help
+            you focus on what matters.
           </p>
         </div>
 

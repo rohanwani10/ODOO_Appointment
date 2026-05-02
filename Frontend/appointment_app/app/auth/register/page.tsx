@@ -21,7 +21,7 @@ export default function RegisterPage() {
               C
             </span>
             <span className="text-lg font-semibold tracking-tight">
-              Calvero
+              MeetMint
             </span>
           </Link>
           <nav className="flex items-center gap-3 sm:gap-5">
@@ -47,7 +47,7 @@ export default function RegisterPage() {
           <div className="mb-8 flex justify-center">
             <div className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white/75 px-4 py-1.5 text-sm font-medium text-slate-700 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/5 dark:text-slate-200">
               <Users className="size-4 text-slate-500 dark:text-slate-400" />
-              Get started with Calvero
+              Get started with MeetMint
             </div>
           </div>
 
@@ -57,7 +57,7 @@ export default function RegisterPage() {
               Choose your role
             </h1>
             <p className="mt-4 text-lg text-slate-600 dark:text-slate-300">
-              Select how you want to use Calvero. You can always change this
+              Select how you want to use MeetMint. You can always change this
               later.
             </p>
           </div>

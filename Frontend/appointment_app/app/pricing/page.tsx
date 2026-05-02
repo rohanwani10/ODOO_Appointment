@@ -71,7 +71,8 @@ const pricingPlans: Array<{
   {
     name: "Free",
     price: "$0",
-    description: "A simple way to test Calvero and share a clean booking page.",
+    description:
+      "A simple way to test MeetMint and share a clean booking page.",
     features: [
       "1 connected calendar",
       "15 bookings per month",
@@ -127,7 +128,7 @@ function Navigation() {
         >
           <BrandMark />
           <span className="text-lg font-semibold tracking-tight text-slate-950 dark:text-white">
-            Calvero
+            MeetMint
           </span>
         </Link>
 

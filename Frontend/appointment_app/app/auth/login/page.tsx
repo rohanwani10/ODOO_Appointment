@@ -65,7 +65,7 @@ export default function LoginPage() {
               C
             </span>
             <span className="text-lg font-semibold tracking-tight">
-              Calvero
+              MeetMint
             </span>
           </Link>
           <nav className="flex items-center gap-3 sm:gap-5">
@@ -91,7 +91,7 @@ export default function LoginPage() {
           <div className="mb-8 flex justify-center">
             <div className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white/75 px-4 py-1.5 text-sm font-medium text-slate-700 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/5 dark:text-slate-200">
               <LogIn className="size-4 text-slate-500 dark:text-slate-400" />
-              Welcome to Calvero
+              Welcome to MeetMint
             </div>
           </div>
 
@@ -200,7 +200,7 @@ export default function LoginPage() {
               </div>
               <div className="relative flex justify-center text-sm">
                 <span className="bg-white px-3 text-slate-500 dark:bg-slate-950/50 dark:text-slate-400">
-                  New to Calvero?
+                  New to MeetMint?
                 </span>
               </div>
             </div>

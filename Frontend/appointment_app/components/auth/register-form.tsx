@@ -119,7 +119,7 @@ export default function RegisterForm({
               C
             </span>
             <span className="text-lg font-semibold tracking-tight">
-              Calvero
+              MeetMint
             </span>
           </Link>
           <nav className="flex items-center gap-3 sm:gap-5">

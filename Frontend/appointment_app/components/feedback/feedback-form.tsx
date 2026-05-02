@@ -49,7 +49,7 @@ export function FeedbackForm({ maxLength = 2000 }: FeedbackFormProps) {
               We've received your feedback and really appreciate it.
             </p>
             <p className="mt-2 text-sm text-slate-400">
-              Your input helps us make Calvero better.
+              Your input helps us make MeetMint better.
             </p>
           </div>
         </div>
@@ -68,7 +68,7 @@ export function FeedbackForm({ maxLength = 2000 }: FeedbackFormProps) {
           </div>
           <h1 className="text-3xl font-bold text-white">Feature Feedback</h1>
           <p className="mt-3 text-slate-300">
-            What features would make Calvero work better for you?
+            What features would make MeetMint work better for you?
           </p>
         </div>
 
@@ -117,7 +117,7 @@ export function FeedbackForm({ maxLength = 2000 }: FeedbackFormProps) {
 
         {/* Helper Text */}
         <p className="mt-6 text-center text-xs text-slate-400">
-          Your feedback is valuable and helps shape the future of Calvero.
+          Your feedback is valuable and helps shape the future of MeetMint.
         </p>
       </div>
     </div>

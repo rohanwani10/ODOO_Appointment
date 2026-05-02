@@ -67,7 +67,7 @@ function BookingVisual() {
             <span className="flex size-8 items-center justify-center rounded-full bg-white/10 text-[0.65rem] font-semibold tracking-[0.2em] text-white">
               C
             </span>
-            <span>Calvero live booking</span>
+            <span>MeetMint live booking</span>
           </div>
           <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1 text-emerald-300">
             Google Calendar connected
@@ -169,7 +169,7 @@ function BookingVisual() {
                       Meeting ready
                     </div>
                     <p className="mt-2 text-cyan-50/80">
-                      Calvero creates the Google Meet link automatically and
+                      MeetMint creates the Google Meet link automatically and
                       adds it to the invite.
                     </p>
                   </div>
@@ -296,7 +296,7 @@ export default function Home() {
               C
             </span>
             <span className="text-lg font-semibold tracking-tight">
-              Calvero
+              MeetMint
             </span>
           </Link>
 
@@ -339,7 +339,7 @@ export default function Home() {
               </h1>
 
               <p className="mx-auto mt-6 max-w-2xl text-pretty text-lg leading-8 text-slate-600 sm:text-xl dark:text-slate-300">
-                Calvero syncs with Google Calendar, shows real-time
+                MeetMint syncs with Google Calendar, shows real-time
                 availability, and lets guests book instantly while automatically
                 generating the right meeting details.
               </p>
@@ -394,8 +394,8 @@ export default function Home() {
                 Google Calendar sync and Google Meet generation, built in.
               </h2>
               <p className="mt-5 max-w-xl text-lg leading-8 text-slate-600 dark:text-slate-300">
-                Calvero keeps the source of truth in your calendar, then creates
-                the meeting link, writes the event details, and updates
+                MeetMint keeps the source of truth in your calendar, then
+                creates the meeting link, writes the event details, and updates
                 availability the moment a booking changes.
               </p>
 
@@ -528,7 +528,7 @@ export default function Home() {
               Ready to launch
             </p>
             <h2 className="mx-auto mt-4 max-w-3xl text-3xl font-semibold tracking-tight sm:text-5xl">
-              Start with Calvero and turn every available slot into a clean
+              Start with MeetMint and turn every available slot into a clean
               booking experience.
             </h2>
             <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-slate-300">
@@ -551,7 +551,7 @@ export default function Home() {
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-8 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
           <div>
             <p className="text-lg font-semibold text-slate-950 dark:text-white">
-              Calvero
+              MeetMint
             </p>
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
               Premium scheduling for teams that want fewer meetings about

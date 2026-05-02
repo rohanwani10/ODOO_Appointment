@@ -28,7 +28,7 @@ def migrate():
                         ALTER TABLE users ALTER COLUMN username DROP NOT NULL
                     """))
                     connection.commit()
-                    print("✓ username column made nullable\n")
+                    print("OK username column made nullable\n")
                 except Exception as e:
                     print(f"Note: username column update: {str(e)}\n")
                     connection.rollback()
@@ -38,6 +38,8 @@ def migrate():
                 'first_name': "VARCHAR(100) NOT NULL DEFAULT 'Unknown'",
                 'last_name': "VARCHAR(100) NOT NULL DEFAULT 'User'",
                 'phone': "VARCHAR(20) NULL",
+                'profile_picture_url': "VARCHAR(500) NULL",
+                'preferences': "TEXT NULL",
                 'is_verified': "BOOLEAN NOT NULL DEFAULT FALSE",
                 'otp_code': "VARCHAR(6) NULL",
                 'otp_expires_at': "TIMESTAMP WITH TIME ZONE NULL",
@@ -58,19 +60,19 @@ def migrate():
                             ALTER TABLE users ADD COLUMN {column_name} {column_def}
                         """))
                         connection.commit()
-                        print(f"✓ {column_name} column added successfully")
+                        print(f"OK {column_name} column added successfully")
                         added_count += 1
                     except Exception as e:
-                        print(f"✗ Failed to add {column_name}: {str(e)}")
+                        print(f"FAILED to add {column_name}: {str(e)}")
                         connection.rollback()
                 else:
-                    print(f"✓ {column_name} column already exists")
+                    print(f"OK {column_name} column already exists")
             
-            print(f"\n✓ Migration completed! Added {added_count} column(s)")
+            print(f"\nOK Migration completed! Added {added_count} column(s)")
             return True
         
     except Exception as e:
-        print(f"\n✗ Migration failed with error: {str(e)}")
+        print(f"\nFAILED Migration failed with error: {str(e)}")
         import traceback
         traceback.print_exc()
         return False

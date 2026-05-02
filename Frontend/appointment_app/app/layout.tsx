@@ -1,9 +1,6 @@
-"use client";
-
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { GoogleOAuthProvider } from "@react-oauth/google";
-import { AuthProvider } from "@/contexts/AuthContext";
+import { Providers } from "@/components/providers/Providers";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -16,29 +13,27 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "";
+export const metadata: Metadata = {
+  icons: {
+    icon: "/MeetMint.png",
+    shortcut: "/MeetMint.png",
+    apple: "/MeetMint.png",
+  },
+};
 
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  if (!googleClientId) {
-    console.warn(
-      "Warning: NEXT_PUBLIC_GOOGLE_CLIENT_ID is not set. Google OAuth will not work.",
-    );
-  }
-
   return (
     <html lang="en">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <GoogleOAuthProvider clientId={googleClientId}>
-          <AuthProvider>
-            <main>{children}</main>
-          </AuthProvider>
-        </GoogleOAuthProvider>
+        <Providers>
+          <main>{children}</main>
+        </Providers>
       </body>
     </html>
   );
