@@ -401,8 +401,6 @@ export function HomePageClient() {
   }, [currentTime, googleProfile?.updated_at]);
 
   useEffect(() => {
-    setIsLoading(true);
-    setStatsError(null);
     let mounted = true;
 
     (async () => {
