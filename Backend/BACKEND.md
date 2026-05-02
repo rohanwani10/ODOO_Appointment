@@ -502,6 +502,315 @@ ORDER BY hour DESC;
 
 ---
 
+## HTTP Request Bodies
+
+Use the JSON examples below for the main `POST` and `PUT` routes. Endpoints marked as `GET` or `DELETE` usually do not need a request body unless you later add filters in the query string.
+
+### Phase 1: Authentication & RBAC
+
+#### `POST /api/auth/register`
+```json
+{
+    "email": "john@example.com",
+    "first_name": "John",
+    "last_name": "Doe",
+    "phone": "+1234567890",
+    "password": "SecurePass123!"
+}
+```
+
+#### `POST /api/auth/send-otp`
+```json
+{
+    "email": "john@example.com"
+}
+```
+
+#### `POST /api/auth/verify-otp`
+```json
+{
+    "email": "john@example.com",
+    "otp": "123456"
+}
+```
+
+#### `POST /api/auth/login`
+```json
+{
+    "email": "john@example.com",
+    "password": "SecurePass123!"
+}
+```
+
+#### `POST /api/auth/logout`
+```json
+{
+    "refresh_token": "eyJhbGciOi..."
+}
+```
+
+#### `POST /api/auth/forgot-password`
+```json
+{
+    "email": "john@example.com"
+}
+```
+
+#### `POST /api/auth/reset-password`
+```json
+{
+    "token": "reset-token-from-email",
+    "new_password": "NewSecurePass123!"
+}
+```
+
+#### `POST /api/auth/refresh-token`
+```json
+{
+    "refresh_token": "eyJhbGciOi..."
+}
+```
+
+#### `PUT /api/users/me`
+```json
+{
+    "first_name": "John",
+    "last_name": "Doe",
+    "phone": "+1234567890"
+}
+```
+
+#### `POST /api/users/change-password`
+```json
+{
+    "current_password": "OldPass123!",
+    "new_password": "NewPass123!"
+}
+```
+
+#### `POST /api/admin/users/{user_id}/roles`
+```json
+{
+    "role": "ORGANIZER"
+}
+```
+
+#### `DELETE /api/admin/users/{user_id}/roles/{role}`
+No request body.
+
+### Phase 2: Customer Booking Flow
+
+#### `POST /api/appointments`
+```json
+{
+    "service_id": "service-uuid",
+    "resource_id": "resource-uuid",
+    "start_time": "2026-05-10T10:00:00Z",
+    "end_time": "2026-05-10T10:30:00Z",
+    "capacity_used": 1,
+    "notes": "Please call me on arrival",
+    "form_responses": [
+        {
+            "question_id": "question-uuid-1",
+            "response": "I prefer morning slots"
+        },
+        {
+            "question_id": "question-uuid-2",
+            "response": "john@example.com"
+        }
+    ]
+}
+```
+
+#### `PUT /api/appointments/{appointment_id}/reschedule`
+```json
+{
+    "start_time": "2026-05-11T12:00:00Z",
+    "end_time": "2026-05-11T12:30:00Z"
+}
+```
+
+#### `DELETE /api/appointments/{appointment_id}`
+```json
+{
+    "cancellation_reason": "Schedule changed"
+}
+```
+
+#### `POST /api/appointments/{appointment_id}/form-responses`
+```json
+{
+    "responses": [
+        {
+            "question_id": "question-uuid-1",
+            "response": "Yes"
+        },
+        {
+            "question_id": "question-uuid-2",
+            "response": "No allergies"
+        }
+    ]
+}
+```
+
+### Phase 2: Organizer Management
+
+#### `POST /api/services`
+```json
+{
+    "organization_id": "org-uuid",
+    "name": "Doctor Consultation",
+    "description": "General health consultation",
+    "duration_minutes": 30,
+    "capacity": 1,
+    "is_published": false,
+    "max_bookings_per_user": 2,
+    "requires_advance_payment": true,
+    "advance_payment_amount": 10.0
+}
+```
+
+#### `PUT /api/services/{service_id}`
+```json
+{
+    "name": "Updated Service Name",
+    "description": "Updated description",
+    "duration_minutes": 45,
+    "capacity": 2,
+    "is_published": true
+}
+```
+
+#### `POST /api/resources`
+```json
+{
+    "organization_id": "org-uuid",
+    "name": "Dr. Smith",
+    "type": "PROVIDER",
+    "description": "General physician",
+    "capacity": 1
+}
+```
+
+#### `POST /api/resources/{resource_id}/working-hours`
+```json
+{
+    "day_of_week": 1,
+    "start_time": "09:00:00",
+    "end_time": "17:00:00",
+    "break_start": "13:00:00",
+    "break_end": "14:00:00",
+    "is_available": true
+}
+```
+
+#### `POST /api/resources/{resource_id}/unavailability`
+```json
+{
+    "start_date_time": "2026-05-15T09:00:00Z",
+    "end_date_time": "2026-05-15T13:00:00Z",
+    "reason": "Maintenance"
+}
+```
+
+#### `POST /api/services/{service_id}/resources`
+```json
+{
+    "resource_id": "resource-uuid",
+    "is_required": true,
+    "assignment_type": "AUTO"
+}
+```
+
+#### `POST /api/services/{service_id}/form-questions`
+```json
+{
+    "question_text": "What is the reason for your visit?",
+    "field_type": "TEXTAREA",
+    "is_required": true,
+    "options": null,
+    "display_order": 1
+}
+```
+
+#### `PUT /api/services/{service_id}/form-questions/{question_id}`
+```json
+{
+    "question_text": "Updated question text",
+    "field_type": "SELECT",
+    "is_required": false,
+    "options": ["Option 1", "Option 2"],
+    "display_order": 2
+}
+```
+
+#### `PUT /api/appointments/{appointment_id}/status`
+```json
+{
+    "status": "CONFIRMED"
+}
+```
+
+### Phase 4: Admin Dashboard
+
+#### `POST /api/admin/organizations`
+```json
+{
+    "name": "Acme Health",
+    "description": "Primary care organization",
+    "admin_user_id": "user-uuid",
+    "logo_url": "https://example.com/logo.png"
+}
+```
+
+#### `PUT /api/admin/users/{user_id}`
+```json
+{
+    "first_name": "John",
+    "last_name": "Doe",
+    "phone": "+1234567890",
+    "is_active": true
+}
+```
+
+#### `PUT /api/admin/providers/{provider_id}`
+```json
+{
+    "name": "Dr. Jane Smith",
+    "description": "Cardiologist",
+    "capacity": 1,
+    "is_active": true
+}
+```
+
+### Payment Endpoints
+
+#### `POST /api/payments/checkout`
+```json
+{
+    "appointment_id": "appointment-uuid",
+    "payment_method": "CREDIT_CARD"
+}
+```
+
+#### `POST /api/payments/confirm`
+```json
+{
+    "appointment_id": "appointment-uuid",
+    "transaction_id": "txn_1234567890",
+    "payment_gateway": "Stripe"
+}
+```
+
+#### `POST /api/payments/{payment_id}/refund`
+```json
+{
+    "reason": "Customer requested cancellation"
+}
+```
+
+---
+
 ## Error Handling & Response Format
 
 ### Standard Success Response

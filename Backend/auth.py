@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from typing import Optional, List
+from typing import Optional, List, Union
 import secrets
 import random
 import hashlib
@@ -8,6 +8,7 @@ from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr
 from config import settings
 from sqlalchemy.orm import Session
+from sqlalchemy import Column
 from models import User, RefreshToken, UserRole
 
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
@@ -58,9 +59,9 @@ def hash_password(password: str) -> str:
     return pwd_context.hash(password)
 
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
+def verify_password(plain_password: str, hashed_password: Union[str, Column]) -> bool:
     """Verify a password against its hash."""
-    return pwd_context.verify(plain_password, hashed_password)
+    return pwd_context.verify(plain_password, hashed_password)  # type: ignore[arg-type]
 
 
 def hash_refresh_token(refresh_token: str) -> str:
@@ -75,28 +76,28 @@ def generate_otp() -> str:
     return str(random.randint(100000, 999999))
 
 
-def send_otp_email(email: str, otp: str) -> bool:
+def send_otp_email(email: Union[str, Column], otp: Union[str, Column]) -> bool:
     """Send OTP via email."""
     from email_service import email_service
     # Extract user name from email for personalization
-    user_name = email.split('@')[0].capitalize()
-    return email_service.send_otp_email(email, otp, user_name)
+    user_name = str(email).split('@')[0].capitalize()
+    return email_service.send_otp_email(str(email), str(otp), user_name)  # type: ignore[arg-type]
 
 
 def verify_otp(user: User, provided_otp: str) -> bool:
     """Verify if OTP is correct and not expired."""
-    if not user.otp_code or not user.otp_expires_at:
+    if not user.otp_code or not user.otp_expires_at:  # type: ignore[arg-type]
         return False
     
-    if datetime.utcnow() > user.otp_expires_at:
+    if datetime.utcnow() > user.otp_expires_at:  # type: ignore[operator]
         return False
     
-    return user.otp_code == provided_otp
+    return bool(user.otp_code == provided_otp)  # type: ignore[return-value]
 
 
 # ==================== JWT Token Management ====================
 
-def create_access_token(user_id: int, email: str, roles: List[str], 
+def create_access_token(user_id: Union[int, Column], email: Union[str, Column], roles: List[str], 
                        expires_delta: Optional[timedelta] = None) -> str:
     """Create a JWT access token."""
     if expires_delta is None:
@@ -114,7 +115,7 @@ def create_access_token(user_id: int, email: str, roles: List[str],
     return encoded_jwt
 
 
-def create_refresh_token(user_id: int) -> tuple[str, str]:
+def create_refresh_token(user_id: Union[int, Column]) -> tuple[str, str]:
     """Create a refresh token and return (token, hashed_token)."""
     token = secrets.token_urlsafe(32)
     hashed_token = hash_refresh_token(token)
@@ -125,9 +126,9 @@ def verify_access_token(token: str, db: Session) -> Optional[TokenData]:
     """Verify JWT access token and return token data."""
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        user_id: int = payload.get("user_id")
-        email: str = payload.get("email")
-        roles: List[str] = payload.get("roles", [])
+        user_id: int = payload.get("user_id")  # type: ignore[assignment]
+        email: str = payload.get("email")  # type: ignore[assignment]
+        roles: List[str] = payload.get("roles", [])  # type: ignore[assignment]
         
         if user_id is None or email is None:
             return None
@@ -150,10 +151,10 @@ def verify_refresh_token(token: str, db: Session) -> Optional[int]:
         return None
     
     # Update last_used_at
-    refresh_token_record.last_used_at = datetime.utcnow()
+    refresh_token_record.last_used_at = datetime.utcnow()  # type: ignore[assignment]
     db.commit()
     
-    return refresh_token_record.user_id
+    return int(refresh_token_record.user_id)  # type: ignore[return-value]
 
 
 def revoke_refresh_token(token: str, db: Session) -> bool:
@@ -166,12 +167,12 @@ def revoke_refresh_token(token: str, db: Session) -> bool:
     if not refresh_token_record:
         return False
     
-    refresh_token_record.is_revoked = True
+    refresh_token_record.is_revoked = True  # type: ignore[assignment]
     db.commit()
     return True
 
 
-def revoke_all_user_tokens(user_id: int, db: Session) -> bool:
+def revoke_all_user_tokens(user_id: Union[int, Column], db: Session) -> bool:
     """Revoke all refresh tokens for a user (logout all devices)."""
     db.query(RefreshToken).filter(
         RefreshToken.user_id == user_id,
@@ -183,7 +184,7 @@ def revoke_all_user_tokens(user_id: int, db: Session) -> bool:
 
 # ==================== Password Reset ====================
 
-def generate_password_reset_token(user_id: int, email: str) -> str:
+def generate_password_reset_token(user_id: Union[int, Column], email: Union[str, Column]) -> str:
     """Generate a password reset token."""
     expire = datetime.utcnow() + timedelta(hours=1)  # 1 hour expiry
     to_encode = {
@@ -236,7 +237,7 @@ def get_user_by_email(email: str, db: Session) -> Optional[User]:
     ).first()
 
 
-def get_user_by_id(user_id: int, db: Session) -> Optional[User]:
+def get_user_by_id(user_id: Union[int, Column], db: Session) -> Optional[User]:
     """Get user by ID."""
     return db.query(User).filter(
         User.id == user_id,
@@ -245,7 +246,7 @@ def get_user_by_id(user_id: int, db: Session) -> Optional[User]:
 
 
 def create_user(email: str, first_name: str, last_name: str, password: str, 
-                phone: Optional[str] = None, db: Session = None) -> Optional[User]:
+                phone: Optional[str] = None, db: Session = None) -> Optional[User]:  # type: ignore[assignment]
     """Create a new user."""
     if get_user_by_email(email, db):
         return None  # User already exists
@@ -267,13 +268,13 @@ def create_user(email: str, first_name: str, last_name: str, password: str,
     return user
 
 
-def get_user_roles(user_id: int, db: Session) -> List[str]:
+def get_user_roles(user_id: Union[int, Column], db: Session) -> List[str]:
     """Get all roles for a user."""
     roles = db.query(UserRole).filter(UserRole.user_id == user_id).all()
-    return [role.role for role in roles]
+    return [str(role.role) for role in roles]  # type: ignore[return-value]
 
 
-def add_user_role(user_id: int, role: str, db: Session) -> Optional[UserRole]:
+def add_user_role(user_id: Union[int, Column], role: str, db: Session) -> Optional[UserRole]:
     """Add a role to a user."""
     if role not in ['CUSTOMER', 'ORGANIZER', 'ADMIN']:
         return None
@@ -295,7 +296,7 @@ def add_user_role(user_id: int, role: str, db: Session) -> Optional[UserRole]:
     return user_role
 
 
-def remove_user_role(user_id: int, role: str, db: Session) -> bool:
+def remove_user_role(user_id: Union[int, Column], role: str, db: Session) -> bool:
     """Remove a role from a user."""
     result = db.query(UserRole).filter(
         UserRole.user_id == user_id,
@@ -305,12 +306,12 @@ def remove_user_role(user_id: int, role: str, db: Session) -> bool:
     return result > 0
 
 
-def soft_delete_user(user_id: int, db: Session) -> bool:
+def soft_delete_user(user_id: Union[int, Column], db: Session) -> bool:
     """Soft delete a user."""
     user = get_user_by_id(user_id, db)
     if not user:
         return False
     
-    user.deleted_at = datetime.utcnow()
+    user.deleted_at = datetime.utcnow()  # type: ignore[assignment]
     db.commit()
     return True

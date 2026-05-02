@@ -7,6 +7,7 @@ from functools import wraps
 
 from database import engine, get_db, Base
 from models import User, UserRole, RefreshToken
+from email_service import email_service
 from auth import (
     create_access_token,
     create_refresh_token,
@@ -159,7 +160,7 @@ async def get_current_user(
     
     # Fetch user to verify they still exist and are active
     user = get_user_by_id(token_data.user_id, db)
-    if user is None or not user.is_active:
+    if user is None or not user.is_active:  # type: ignore[arg-type]
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found or inactive",
@@ -211,23 +212,29 @@ def register(request: RegisterRequest, db: Session = Depends(get_db)):
     )
     
     # Assign CUSTOMER role by default
-    add_user_role(user.id, "CUSTOMER", db)
+    add_user_role(user.id, "CUSTOMER", db)  # type: ignore[union-attr]
     
     # Get user roles for token
-    user_roles = get_user_roles(user.id, db)
+    user_roles = get_user_roles(user.id, db)  # type: ignore[union-attr]
     
     # Generate tokens
-    access_token = create_access_token(user.id, user.email, user_roles)
-    refresh_token, hashed_refresh_token = create_refresh_token(user.id)
+    access_token = create_access_token(user.id, user.email, user_roles)  # type: ignore[union-attr]
+    refresh_token, hashed_refresh_token = create_refresh_token(user.id)  # type: ignore[union-attr]
     
     # Store refresh token in DB
     refresh_token_record = RefreshToken(
-        user_id=user.id,
+        user_id=user.id,  # type: ignore[union-attr]
         hashed_token=hashed_refresh_token,
         expires_at=datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     )
     db.add(refresh_token_record)
     db.commit()
+
+    # Send onboarding email without blocking signup if email delivery fails
+    try:
+        email_service.send_welcome_email(user.email, user.first_name)  # type: ignore[union-attr,arg-type]
+    except Exception:
+        pass
     
     return LoginResponse(
         access_token=access_token,
@@ -253,8 +260,8 @@ def send_otp(request: SendOTPRequest, db: Session = Depends(get_db)):
     otp_expires = datetime.utcnow() + timedelta(minutes=10)  # 10 minutes expiry
     
     # Update user with OTP
-    user.otp_code = otp
-    user.otp_expires_at = otp_expires
+    user.otp_code = otp  # type: ignore[assignment]
+    user.otp_expires_at = otp_expires  # type: ignore[assignment]
     db.commit()
     
     # Send OTP via email
@@ -281,9 +288,9 @@ def verify_otp_endpoint(request: VerifyOTPRequest, db: Session = Depends(get_db)
         )
     
     # Mark user as verified
-    user.is_verified = True
-    user.otp_code = None
-    user.otp_expires_at = None
+    user.is_verified = True  # type: ignore[assignment]
+    user.otp_code = None  # type: ignore[assignment]
+    user.otp_expires_at = None  # type: ignore[assignment]
     db.commit()
     
     return {"message": "Email verified successfully"}
@@ -307,7 +314,7 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
             detail="Invalid email or password",
         )
     
-    if not user.is_active:
+    if not user.is_active:  # type: ignore[arg-type]
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User account is inactive",
@@ -367,10 +374,10 @@ def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(get_db
         return {"message": "If the email exists, a reset link has been sent"}
     
     # Generate password reset token
-    reset_token = generate_password_reset_token(user.id, user.email)
+    reset_token = generate_password_reset_token(user.id, user.email)  # type: ignore[arg-type]
     
     # Send reset email
-    send_password_reset_email(user.email, reset_token)
+    send_password_reset_email(user.email, reset_token)  # type: ignore[arg-type]
     
     return {"message": "Password reset link sent to email"}
 
@@ -395,7 +402,7 @@ def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db))
         )
     
     # Update password
-    user.hashed_password = hash_password(request.new_password)
+    user.hashed_password = hash_password(request.new_password)  # type: ignore[assignment]
     db.commit()
     
     # Revoke all refresh tokens for security
@@ -428,7 +435,7 @@ def refresh_access_token(
         )
     
     user = get_user_by_id(user_id, db)
-    if not user or not user.is_active:
+    if not user or not user.is_active:  # type: ignore[arg-type]
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found or inactive"
@@ -456,7 +463,8 @@ def refresh_access_token(
     return TokenResponse(
         access_token=access_token,
         refresh_token=new_refresh_token,
-        token_type="bearer"
+        token_type="bearer",
+        user=UserResponse.from_orm(user)
     )
 
 
@@ -482,13 +490,13 @@ def update_current_user_profile(
 ):
     """Update current user profile."""
     if request.first_name:
-        current_user.first_name = request.first_name
+        current_user.first_name = request.first_name  # type: ignore[assignment]
     if request.last_name:
-        current_user.last_name = request.last_name
+        current_user.last_name = request.last_name  # type: ignore[assignment]
     if request.phone is not None:
-        current_user.phone = request.phone
+        current_user.phone = request.phone  # type: ignore[assignment]
     
-    current_user.updated_at = datetime.utcnow()
+    current_user.updated_at = datetime.utcnow()  # type: ignore[assignment]
     db.commit()
     db.refresh(current_user)
     
@@ -506,14 +514,14 @@ def change_password(
 ):
     """Change user password."""
     # Verify current password
-    if not verify_password(request.current_password, current_user.hashed_password):
+    if not verify_password(request.current_password, current_user.hashed_password):  # type: ignore[arg-type]
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Current password is incorrect"
         )
     
     # Update password
-    current_user.hashed_password = hash_password(request.new_password)
+    current_user.hashed_password = hash_password(request.new_password)  # type: ignore[assignment]
     db.commit()
     
     # Revoke all refresh tokens for security
