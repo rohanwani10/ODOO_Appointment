@@ -27,14 +27,16 @@ export function AccountManager({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const [connectMessage, setConnectMessage] = useState<string | null>(null);
 
   const currentCount = connectedAccounts.length;
   const isAtLimit = currentCount >= maxCalendars;
   const isUnlimited = maxCalendars === Infinity;
 
   const handleConnect = () => {
-    // Redirect to OAuth connect endpoint
-    window.location.href = "/api/calendar/connect";
+    setConnectMessage(
+      "Google Calendar sync is not available in the current backend build.",
+    );
   };
 
   const handleDisconnect = async (accountKey: string) => {
@@ -93,6 +95,12 @@ export function AccountManager({
           </Button>
         )}
       </div>
+
+      {connectMessage && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          {connectMessage}
+        </div>
+      )}
 
       {connectedAccounts.length === 0 ? (
         <div className="rounded-lg border border-dashed p-8 text-center">

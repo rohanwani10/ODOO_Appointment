@@ -1,9 +1,21 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Header
+# pyright: reportGeneralTypeIssues=false
+
+from fastapi import FastAPI, Depends, HTTPException, status, Header, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
-from typing import Optional, List
+from typing import Optional, List, Any, cast
 from functools import wraps
+from sqlalchemy import func
+import os
+from uuid import uuid4
+from fastapi.responses import StreamingResponse
+import io
+import csv
+import logging
+
+logger = logging.getLogger(__name__)
 
 from database import engine, get_db, Base
 from models import (
@@ -158,6 +170,7 @@ class ServiceCreateRequest(BaseModel):
     max_bookings_per_user: Optional[int] = None
     requires_advance_payment: bool = False
     advance_payment_amount: Optional[float] = None
+    shareable_link: Optional[str] = None
 
 
 class AppointmentCreateRequest(BaseModel):
@@ -178,10 +191,21 @@ class AppointmentResponse(BaseModel):
     end_time: datetime
     status: str
     capacity_used: int
+    notes: Optional[str] = None
+    cancellation_reason: Optional[str] = None
+    cancelled_at: Optional[datetime] = None
     created_at: datetime
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
+        json_encoders = {
+            datetime: lambda value: (
+                value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+                if value.tzinfo and value.utcoffset() is not None
+                else value.replace(tzinfo=timezone.utc).isoformat().replace("+00:00", "Z")
+            )
+        }
 
 # ==================== Phase 2: Resource Pydantic Models ====================
 
@@ -354,6 +378,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Serve uploaded files
+if not os.path.exists("uploads"):
+    os.makedirs("uploads/profiles", exist_ok=True)
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+
 
 # ==================== Startup & Teardown ====================
 
@@ -419,6 +448,25 @@ def require_role(*allowed_roles: str):
         return current_user
     
     return check_role
+
+
+def orm(obj: Any) -> Any:
+    """Return an ORM instance as Any so Pylance does not treat mapped fields as Column objects."""
+    return obj
+
+
+def normalize_datetime_to_utc(value: datetime) -> datetime:
+    """Treat naive datetimes as UTC and normalize aware datetimes to UTC."""
+    if value.tzinfo is None or value.utcoffset() is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def serialize_datetime(value: Optional[datetime]) -> Optional[str]:
+    """Return ISO timestamps with an explicit UTC marker for the frontend."""
+    if value is None:
+        return None
+    return normalize_datetime_to_utc(value).isoformat().replace("+00:00", "Z")
 
 
 # ==================== Phase 1: Authentication Endpoints ====================
@@ -731,6 +779,136 @@ def get_current_user_profile(
     return UserDetailResponse(**user_data)
 
 
+# ==================== Phase 3: Profile Management ====================
+
+
+class PreferencesRequest(BaseModel):
+    preferences: Optional[dict] = None
+
+
+@app.post("/api/users/me/photo")
+def upload_profile_photo(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Upload and attach a profile photo to the current user."""
+    # Ensure uploads/profiles exists
+    upload_dir = os.path.join("uploads", "profiles")
+    os.makedirs(upload_dir, exist_ok=True)
+    # Validate file type and size
+    MAX_BYTES = 5 * 1024 * 1024  # 5 MB
+    allowed_ext = {"png", "jpg", "jpeg", "gif", "webp"}
+
+    # Basic MIME check
+    content_type = (file.content_type or "").lower()
+    if not content_type.startswith("image/"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only image uploads are allowed")
+
+    # Read up to MAX_BYTES+1 to detect oversized files
+    content = file.file.read(MAX_BYTES + 1)
+    if len(content) > MAX_BYTES:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="File too large (max 5MB)")
+
+    # Validate extension
+    filename = (file.filename or "profile").lower()
+    ext = filename.split(".")[-1] if "." in filename else ""
+    if ext not in allowed_ext:
+        # if extension not present or not allowed, still accept if MIME is image/* but normalize ext to png
+        ext = "png"
+
+    unique_name = f"{current_user.id}_{uuid4().hex}.{ext}"
+    path = os.path.join(upload_dir, unique_name)
+
+    with open(path, "wb") as f:
+        f.write(content)
+
+    # Save URL to user
+    current_user.profile_picture_url = f"/uploads/profiles/{unique_name}"  # type: ignore[assignment]
+    current_user.updated_at = datetime.now(timezone.utc)  # type: ignore[assignment]
+    db.commit()
+    db.refresh(current_user)
+
+    return {"profile_picture_url": current_user.profile_picture_url}
+
+
+# ==================== Customer Endpoints (aliases per docs) ====================
+
+
+@app.get("/api/customers/profile", response_model=UserDetailResponse)
+def get_customer_profile(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Alias for GET /api/users/me to match documentation."""
+    roles = get_user_roles(current_user.id, db)
+    user_data = UserResponse.from_orm(current_user).dict()
+    user_data['roles'] = roles
+    return UserDetailResponse(**user_data)
+
+
+@app.put("/api/customers/profile", response_model=UserDetailResponse)
+def put_customer_profile(request: UpdateProfileRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Alias for PUT /api/users/me to match documentation."""
+    # reuse existing update logic
+    if request.first_name:
+        current_user.first_name = request.first_name  # type: ignore[assignment]
+    if request.last_name:
+        current_user.last_name = request.last_name  # type: ignore[assignment]
+    if request.phone is not None:
+        current_user.phone = request.phone  # type: ignore[assignment]
+    current_user.updated_at = datetime.now(timezone.utc)  # type: ignore[assignment]
+    db.commit()
+    db.refresh(current_user)
+    roles = get_user_roles(current_user.id, db)
+    user_data = UserResponse.from_orm(current_user).dict()
+    user_data['roles'] = roles
+    return UserDetailResponse(**user_data)
+
+
+@app.get("/api/customers/appointment-history", response_model=List[AppointmentResponse])
+def customer_appointment_history(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Return past appointments for the authenticated customer."""
+    now = normalize_datetime_to_utc(datetime.now(timezone.utc))
+    appts = db.query(Appointment).filter(
+        Appointment.customer_id == current_user.id,
+        Appointment.end_time < now
+    ).order_by(Appointment.start_time.desc()).all()
+    return appts
+
+
+@app.get("/api/customers/upcoming-appointments", response_model=List[AppointmentResponse])
+def customer_upcoming_appointments(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Return upcoming/future appointments for the authenticated customer."""
+    now = normalize_datetime_to_utc(datetime.now(timezone.utc))
+    appts = db.query(Appointment).filter(
+        Appointment.customer_id == current_user.id,
+        Appointment.start_time >= now,
+        Appointment.status != 'CANCELLED'
+    ).order_by(Appointment.start_time.asc()).all()
+    return appts
+
+
+@app.get("/api/users/me/preferences")
+def get_preferences(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    prefs = None
+    if current_user.preferences:
+        try:
+            import json
+            prefs = json.loads(current_user.preferences)
+        except Exception:
+            prefs = None
+    return {"preferences": prefs}
+
+
+@app.put("/api/users/me/preferences")
+def update_preferences(request: PreferencesRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    import json
+    current_user.preferences = json.dumps(request.preferences or {})  # type: ignore[assignment]
+    current_user.updated_at = datetime.now(timezone.utc)  # type: ignore[assignment]
+    db.commit()
+    db.refresh(current_user)
+    return {"preferences": request.preferences or {}}
+
+
+
 @app.put("/api/users/me", response_model=UserDetailResponse)
 def update_current_user_profile(
     request: UpdateProfileRequest,
@@ -960,7 +1138,8 @@ def get_service(service_id: int, db: Session = Depends(get_db)):
 
 
 @app.post("/api/services", response_model=ServiceResponse, status_code=201)
-def create_service(request: ServiceCreateRequest, current_user: User = Depends(require_role("ORGANIZER")), db: Session = Depends(get_db)):
+def create_service(request: ServiceCreateRequest, current_user: User = Depends(require_role("ORGANIZER", "ADMIN")), db: Session = Depends(get_db)):
+    _verify_org_owner(current_user.id, request.organization_id, db)
     service = Service(
         organization_id=request.organization_id,
         name=request.name,
@@ -981,7 +1160,7 @@ def create_service(request: ServiceCreateRequest, current_user: User = Depends(r
 
 
 @app.put("/api/services/{service_id}", response_model=ServiceResponse)
-def update_service(service_id: int, request: ServiceUpdateRequest, current_user: User = Depends(require_role("ORGANIZER")), db: Session = Depends(get_db)):
+def update_service(service_id: int, request: ServiceUpdateRequest, current_user: User = Depends(require_role("ORGANIZER", "ADMIN")), db: Session = Depends(get_db)):
     service = db.query(Service).filter(Service.id == service_id, Service.deleted_at.is_(None)).first()
     if not service:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service not found")
@@ -1000,27 +1179,27 @@ def update_service(service_id: int, request: ServiceUpdateRequest, current_user:
 
 
 @app.post("/api/services/{service_id}/publish")
-def publish_service(service_id: int, current_user: User = Depends(require_role("ORGANIZER")), db: Session = Depends(get_db)):
+def publish_service(service_id: int, current_user: User = Depends(require_role("ORGANIZER", "ADMIN")), db: Session = Depends(get_db)):
     service = db.query(Service).filter(Service.id == service_id, Service.deleted_at.is_(None)).first()
     if not service:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service not found")
     roles = get_user_roles(current_user.id, db)
     if service.created_by != current_user.id and "ADMIN" not in roles:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
-    service.is_published = True
+    service.is_published = True  # type: ignore[assignment]
     db.commit()
     return {"message": "Service published"}
 
 
 @app.post("/api/services/{service_id}/unpublish")
-def unpublish_service(service_id: int, current_user: User = Depends(require_role("ORGANIZER")), db: Session = Depends(get_db)):
+def unpublish_service(service_id: int, current_user: User = Depends(require_role("ORGANIZER", "ADMIN")), db: Session = Depends(get_db)):
     service = db.query(Service).filter(Service.id == service_id, Service.deleted_at.is_(None)).first()
     if not service:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service not found")
     roles = get_user_roles(current_user.id, db)
     if service.created_by != current_user.id and "ADMIN" not in roles:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
-    service.is_published = False
+    service.is_published = False  # type: ignore[assignment]
     db.commit()
     return {"message": "Service unpublished"}
 
@@ -1029,7 +1208,7 @@ def unpublish_service(service_id: int, current_user: User = Depends(require_role
 
 
 @app.delete("/api/services/{service_id}")
-def delete_service(service_id: int, current_user: User = Depends(require_role("ORGANIZER")), db: Session = Depends(get_db)):
+def delete_service(service_id: int, current_user: User = Depends(require_role("ORGANIZER", "ADMIN")), db: Session = Depends(get_db)):
     """Soft delete a service (Organizer only)."""
     service = db.query(Service).filter(Service.id == service_id, Service.deleted_at.is_(None)).first()
     if not service:
@@ -1037,13 +1216,13 @@ def delete_service(service_id: int, current_user: User = Depends(require_role("O
     roles = get_user_roles(current_user.id, db)
     if service.created_by != current_user.id and "ADMIN" not in roles:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
-    service.deleted_at = datetime.now(timezone.utc)
+    service.deleted_at = datetime.now(timezone.utc)  # type: ignore[assignment]
     db.commit()
     return {"message": "Service deleted"}
 
 
 @app.post("/api/services/{service_id}/shareable-link")
-def generate_shareable_link(service_id: int, current_user: User = Depends(require_role("ORGANIZER")), db: Session = Depends(get_db)):
+def generate_shareable_link(service_id: int, current_user: User = Depends(require_role("ORGANIZER", "ADMIN")), db: Session = Depends(get_db)):
     """Generate a shareable link for a service."""
     import secrets as _secrets
     service = db.query(Service).filter(Service.id == service_id, Service.deleted_at.is_(None)).first()
@@ -1053,7 +1232,7 @@ def generate_shareable_link(service_id: int, current_user: User = Depends(requir
     if service.created_by != current_user.id and "ADMIN" not in roles:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
     link = _secrets.token_urlsafe(16)
-    service.shareable_link = link
+    service.shareable_link = link  # type: ignore[assignment]
     db.commit()
     return {"shareable_link": link}
 
@@ -1125,8 +1304,8 @@ def get_service_availability(
         if not working_hours:
             continue
 
-        day_start = datetime.combine(target_date, time_type.min)
-        day_end = datetime.combine(target_date, time_type.max)
+        day_start = normalize_datetime_to_utc(datetime.combine(target_date, time_type.min))
+        day_end = normalize_datetime_to_utc(datetime.combine(target_date, time_type.max))
 
         existing_appts = db.query(Appointment).filter(
             Appointment.resource_id == resource.id,
@@ -1141,11 +1320,23 @@ def get_service_availability(
             ResourceUnavailability.end_date_time > day_start
         ).all()
 
-        slot_duration = timedelta(minutes=service.duration_minutes)
-        current = datetime.combine(target_date, working_hours.start_time)
-        work_end = datetime.combine(target_date, working_hours.end_time)
-        break_start = datetime.combine(target_date, working_hours.break_start) if working_hours.break_start else None
-        break_end = datetime.combine(target_date, working_hours.break_end) if working_hours.break_end else None
+        slot_duration = timedelta(minutes=service.duration_minutes)  # type: ignore[arg-type]
+        current = normalize_datetime_to_utc(
+            datetime.combine(target_date, working_hours.start_time)  # type: ignore[arg-type]
+        )
+        work_end = normalize_datetime_to_utc(
+            datetime.combine(target_date, working_hours.end_time)  # type: ignore[arg-type]
+        )
+        break_start = (
+            normalize_datetime_to_utc(datetime.combine(target_date, working_hours.break_start))
+            if working_hours.break_start
+            else None
+        )
+        break_end = (
+            normalize_datetime_to_utc(datetime.combine(target_date, working_hours.break_end))
+            if working_hours.break_end
+            else None
+        )
 
         while current + slot_duration <= work_end:
             slot_start = current
@@ -1157,17 +1348,26 @@ def get_service_availability(
                 continue
 
             # Capacity check
-            used = sum(a.capacity_used for a in existing_appts if a.start_time < slot_end and a.end_time > slot_start)
+            used = sum(
+                a.capacity_used
+                for a in existing_appts
+                if normalize_datetime_to_utc(a.start_time) < slot_end
+                and normalize_datetime_to_utc(a.end_time) > slot_start
+            )  # type: ignore[arg-type]
             if used >= resource.capacity:
                 current += slot_duration
                 continue
 
             # Unavailability check
-            is_blocked = any(u.start_date_time < slot_end and u.end_date_time > slot_start for u in unavailability)
+            is_blocked = any(
+                normalize_datetime_to_utc(u.start_date_time) < slot_end
+                and normalize_datetime_to_utc(u.end_date_time) > slot_start
+                for u in unavailability
+            )  # type: ignore[arg-type]
             if not is_blocked:
                 all_slots.append({
-                    "start_time": slot_start.isoformat(),
-                    "end_time": slot_end.isoformat(),
+                    "start_time": serialize_datetime(slot_start),
+                    "end_time": serialize_datetime(slot_end),
                     "resource_id": resource.id,
                     "resource_name": resource.name,
                     "available_capacity": resource.capacity - used,
@@ -1204,7 +1404,7 @@ def _verify_org_owner(user_id, org_id, db):
 
 
 @app.get("/api/resources")
-def list_resources(current_user: User = Depends(require_role("ORGANIZER")), db: Session = Depends(get_db)):
+def list_resources(current_user: User = Depends(require_role("ORGANIZER", "ADMIN")), db: Session = Depends(get_db)):
     """List resources for organizer's organizations."""
     orgs = db.query(Organization).filter(
         Organization.admin_user_id == current_user.id, Organization.deleted_at.is_(None)
@@ -1219,7 +1419,7 @@ def list_resources(current_user: User = Depends(require_role("ORGANIZER")), db: 
 
 
 @app.get("/api/resources/{resource_id}", response_model=ResourceResponse)
-def get_resource(resource_id: int, current_user: User = Depends(require_role("ORGANIZER")), db: Session = Depends(get_db)):
+def get_resource(resource_id: int, current_user: User = Depends(require_role("ORGANIZER", "ADMIN")), db: Session = Depends(get_db)):
     """Get resource details."""
     resource = db.query(Resource).filter(Resource.id == resource_id, Resource.deleted_at.is_(None)).first()
     if not resource:
@@ -1245,21 +1445,21 @@ def get_resource_working_hours(
 
     return [
         WorkingHoursResponse(
-            id=entry.id,
-            resource_id=entry.resource_id,
-            day_of_week=entry.day_of_week,
+            id=entry.id,  # type: ignore[arg-type]
+            resource_id=entry.resource_id,  # type: ignore[arg-type]
+            day_of_week=entry.day_of_week,  # type: ignore[arg-type]
             start_time=str(entry.start_time),
             end_time=str(entry.end_time),
-            break_start=str(entry.break_start) if entry.break_start else None,
-            break_end=str(entry.break_end) if entry.break_end else None,
-            is_available=entry.is_available,
+            break_start=str(entry.break_start) if entry.break_start else None,  # type: ignore[arg-type]
+            break_end=str(entry.break_end) if entry.break_end else None,  # type: ignore[arg-type]
+            is_available=entry.is_available,  # type: ignore[arg-type]
         )
         for entry in working_hours
     ]
 
 
 @app.post("/api/resources", response_model=ResourceResponse, status_code=201)
-def create_resource(request: ResourceCreateRequest, current_user: User = Depends(require_role("ORGANIZER")), db: Session = Depends(get_db)):
+def create_resource(request: ResourceCreateRequest, current_user: User = Depends(require_role("ORGANIZER", "ADMIN")), db: Session = Depends(get_db)):
     """Create a new resource."""
     if request.type not in ("PROVIDER", "ROOM", "EQUIPMENT"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid resource type")
@@ -1278,7 +1478,7 @@ def create_resource(request: ResourceCreateRequest, current_user: User = Depends
 
 
 @app.put("/api/resources/{resource_id}", response_model=ResourceResponse)
-def update_resource(resource_id: int, request: ResourceUpdateRequest, current_user: User = Depends(require_role("ORGANIZER")), db: Session = Depends(get_db)):
+def update_resource(resource_id: int, request: ResourceUpdateRequest, current_user: User = Depends(require_role("ORGANIZER", "ADMIN")), db: Session = Depends(get_db)):
     """Update a resource."""
     resource = db.query(Resource).filter(Resource.id == resource_id, Resource.deleted_at.is_(None)).first()
     if not resource:
@@ -1293,13 +1493,13 @@ def update_resource(resource_id: int, request: ResourceUpdateRequest, current_us
 
 
 @app.delete("/api/resources/{resource_id}")
-def delete_resource(resource_id: int, current_user: User = Depends(require_role("ORGANIZER")), db: Session = Depends(get_db)):
+def delete_resource(resource_id: int, current_user: User = Depends(require_role("ORGANIZER", "ADMIN")), db: Session = Depends(get_db)):
     """Soft delete a resource."""
     resource = db.query(Resource).filter(Resource.id == resource_id, Resource.deleted_at.is_(None)).first()
     if not resource:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
     _verify_org_owner(current_user.id, resource.organization_id, db)
-    resource.deleted_at = datetime.now(timezone.utc)
+    resource.deleted_at = datetime.now(timezone.utc)  # type: ignore[assignment]
     db.commit()
     return {"message": "Resource deleted"}
 
@@ -1308,7 +1508,7 @@ def delete_resource(resource_id: int, current_user: User = Depends(require_role(
 
 
 @app.post("/api/resources/{resource_id}/working-hours", status_code=201)
-def set_working_hours(resource_id: int, request: WorkingHoursCreateRequest, current_user: User = Depends(require_role("ORGANIZER")), db: Session = Depends(get_db)):
+def set_working_hours(resource_id: int, request: WorkingHoursCreateRequest, current_user: User = Depends(require_role("ORGANIZER", "ADMIN")), db: Session = Depends(get_db)):
     """Set working hours for a resource on a specific day."""
     from datetime import time as _time
     resource = db.query(Resource).filter(Resource.id == resource_id, Resource.deleted_at.is_(None)).first()
@@ -1338,16 +1538,16 @@ def set_working_hours(resource_id: int, request: WorkingHoursCreateRequest, curr
     db.commit()
     db.refresh(wh)
     return {
-        "id": wh.id, "resource_id": wh.resource_id, "day_of_week": wh.day_of_week,
+        "id": wh.id, "resource_id": wh.resource_id, "day_of_week": wh.day_of_week,  # type: ignore[arg-type]
         "start_time": str(wh.start_time), "end_time": str(wh.end_time),
-        "break_start": str(wh.break_start) if wh.break_start else None,
-        "break_end": str(wh.break_end) if wh.break_end else None,
-        "is_available": wh.is_available,
+        "break_start": str(wh.break_start) if wh.break_start else None,  # type: ignore[arg-type]
+        "break_end": str(wh.break_end) if wh.break_end else None,  # type: ignore[arg-type]
+        "is_available": wh.is_available,  # type: ignore[arg-type]
     }
 
 
 @app.put("/api/resources/{resource_id}/working-hours/{day_of_week}")
-def update_working_hours(resource_id: int, day_of_week: int, request: WorkingHoursCreateRequest, current_user: User = Depends(require_role("ORGANIZER")), db: Session = Depends(get_db)):
+def update_working_hours(resource_id: int, day_of_week: int, request: WorkingHoursCreateRequest, current_user: User = Depends(require_role("ORGANIZER", "ADMIN")), db: Session = Depends(get_db)):
     """Update working hours for a resource on a specific day."""
     from datetime import time as _time
     resource = db.query(Resource).filter(Resource.id == resource_id, Resource.deleted_at.is_(None)).first()
@@ -1362,23 +1562,23 @@ def update_working_hours(resource_id: int, day_of_week: int, request: WorkingHou
     if not wh:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Working hours not found for this day")
 
-    wh.start_time = _time.fromisoformat(request.start_time)
-    wh.end_time = _time.fromisoformat(request.end_time)
-    wh.break_start = _time.fromisoformat(request.break_start) if request.break_start else None
-    wh.break_end = _time.fromisoformat(request.break_end) if request.break_end else None
-    wh.is_available = request.is_available
+    wh.start_time = _time.fromisoformat(request.start_time)  # type: ignore[assignment]
+    wh.end_time = _time.fromisoformat(request.end_time)  # type: ignore[assignment]
+    wh.break_start = _time.fromisoformat(request.break_start) if request.break_start else None  # type: ignore[assignment]
+    wh.break_end = _time.fromisoformat(request.break_end) if request.break_end else None  # type: ignore[assignment]
+    wh.is_available = request.is_available  # type: ignore[assignment]
     db.commit()
     return {
-        "id": wh.id, "resource_id": wh.resource_id, "day_of_week": wh.day_of_week,
+        "id": wh.id, "resource_id": wh.resource_id, "day_of_week": wh.day_of_week,  # type: ignore[arg-type]
         "start_time": str(wh.start_time), "end_time": str(wh.end_time),
-        "break_start": str(wh.break_start) if wh.break_start else None,
-        "break_end": str(wh.break_end) if wh.break_end else None,
-        "is_available": wh.is_available,
+        "break_start": str(wh.break_start) if wh.break_start else None,  # type: ignore[arg-type]
+        "break_end": str(wh.break_end) if wh.break_end else None,  # type: ignore[arg-type]
+        "is_available": wh.is_available,  # type: ignore[arg-type]
     }
 
 
 @app.post("/api/resources/{resource_id}/unavailability", status_code=201)
-def add_unavailability(resource_id: int, request: UnavailabilityCreateRequest, current_user: User = Depends(require_role("ORGANIZER")), db: Session = Depends(get_db)):
+def add_unavailability(resource_id: int, request: UnavailabilityCreateRequest, current_user: User = Depends(require_role("ORGANIZER", "ADMIN")), db: Session = Depends(get_db)):
     """Add an unavailability period for a resource."""
     resource = db.query(Resource).filter(Resource.id == resource_id, Resource.deleted_at.is_(None)).first()
     if not resource:
@@ -1402,7 +1602,7 @@ def add_unavailability(resource_id: int, request: UnavailabilityCreateRequest, c
 
 
 @app.post("/api/services/{service_id}/resources", status_code=201)
-def assign_resource_to_service(service_id: int, request: ServiceResourceAssignRequest, current_user: User = Depends(require_role("ORGANIZER")), db: Session = Depends(get_db)):
+def assign_resource_to_service(service_id: int, request: ServiceResourceAssignRequest, current_user: User = Depends(require_role("ORGANIZER", "ADMIN")), db: Session = Depends(get_db)):
     """Assign a resource to a service."""
     service = db.query(Service).filter(Service.id == service_id, Service.deleted_at.is_(None)).first()
     if not service:
@@ -1429,7 +1629,7 @@ def assign_resource_to_service(service_id: int, request: ServiceResourceAssignRe
 
 
 @app.put("/api/services/{service_id}/resources/{resource_id}")
-def update_service_resource(service_id: int, resource_id: int, request: ServiceResourceUpdateRequest, current_user: User = Depends(require_role("ORGANIZER")), db: Session = Depends(get_db)):
+def update_service_resource(service_id: int, resource_id: int, request: ServiceResourceUpdateRequest, current_user: User = Depends(require_role("ORGANIZER", "ADMIN")), db: Session = Depends(get_db)):
     """Update a resource assignment on a service."""
     service = db.query(Service).filter(Service.id == service_id, Service.deleted_at.is_(None)).first()
     if not service:
@@ -1443,16 +1643,16 @@ def update_service_resource(service_id: int, resource_id: int, request: ServiceR
     if not sr:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource assignment not found")
     if request.is_required is not None:
-        sr.is_required = request.is_required
+        sr.is_required = request.is_required  # type: ignore[assignment]
     if request.assignment_type is not None:
-        sr.assignment_type = request.assignment_type
+        sr.assignment_type = request.assignment_type  # type: ignore[assignment]
     db.commit()
     db.refresh(sr)
     return ServiceResourceResponse.from_orm(sr)
 
 
 @app.delete("/api/services/{service_id}/resources/{resource_id}")
-def remove_resource_from_service(service_id: int, resource_id: int, current_user: User = Depends(require_role("ORGANIZER")), db: Session = Depends(get_db)):
+def remove_resource_from_service(service_id: int, resource_id: int, current_user: User = Depends(require_role("ORGANIZER", "ADMIN")), db: Session = Depends(get_db)):
     """Remove a resource from a service."""
     service = db.query(Service).filter(Service.id == service_id, Service.deleted_at.is_(None)).first()
     if not service:
@@ -1473,7 +1673,7 @@ def remove_resource_from_service(service_id: int, resource_id: int, current_user
 
 
 @app.post("/api/services/{service_id}/form-questions", status_code=201)
-def create_form_question(service_id: int, request: FormQuestionCreateRequest, current_user: User = Depends(require_role("ORGANIZER")), db: Session = Depends(get_db)):
+def create_form_question(service_id: int, request: FormQuestionCreateRequest, current_user: User = Depends(require_role("ORGANIZER", "ADMIN")), db: Session = Depends(get_db)):
     """Create a form question for a service."""
     service = db.query(Service).filter(Service.id == service_id, Service.deleted_at.is_(None)).first()
     if not service:
@@ -1496,7 +1696,7 @@ def create_form_question(service_id: int, request: FormQuestionCreateRequest, cu
 
 
 @app.put("/api/services/{service_id}/form-questions/{question_id}")
-def update_form_question(service_id: int, question_id: int, request: FormQuestionUpdateRequest, current_user: User = Depends(require_role("ORGANIZER")), db: Session = Depends(get_db)):
+def update_form_question(service_id: int, question_id: int, request: FormQuestionUpdateRequest, current_user: User = Depends(require_role("ORGANIZER", "ADMIN")), db: Session = Depends(get_db)):
     """Update a form question."""
     service = db.query(Service).filter(Service.id == service_id, Service.deleted_at.is_(None)).first()
     if not service:
@@ -1518,7 +1718,7 @@ def update_form_question(service_id: int, question_id: int, request: FormQuestio
 
 
 @app.delete("/api/services/{service_id}/form-questions/{question_id}")
-def delete_form_question(service_id: int, question_id: int, current_user: User = Depends(require_role("ORGANIZER")), db: Session = Depends(get_db)):
+def delete_form_question(service_id: int, question_id: int, current_user: User = Depends(require_role("ORGANIZER", "ADMIN")), db: Session = Depends(get_db)):
     """Delete a form question."""
     service = db.query(Service).filter(Service.id == service_id, Service.deleted_at.is_(None)).first()
     if not service:
@@ -1541,6 +1741,9 @@ def delete_form_question(service_id: int, question_id: int, current_user: User =
 @app.post("/api/appointments", response_model=AppointmentResponse, status_code=201)
 def create_appointment(request: AppointmentCreateRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     # Validate service
+    start_time = normalize_datetime_to_utc(request.start_time)
+    end_time = normalize_datetime_to_utc(request.end_time)
+
     service = db.query(Service).filter(Service.id == request.service_id, Service.deleted_at.is_(None)).first()
     if not service:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service not found")
@@ -1553,38 +1756,38 @@ def create_appointment(request: AppointmentCreateRequest, current_user: User = D
     if not resource:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
 
-    if request.start_time >= request.end_time:
+    if start_time >= end_time:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid time range")
 
     # Pessimistic check for overlapping appointments on the resource
     overlapping = db.query(Appointment).filter(
         Appointment.resource_id == resource.id,
         Appointment.status != 'CANCELLED',
-        Appointment.start_time < request.end_time,
-        Appointment.end_time > request.start_time
+        Appointment.start_time < end_time,
+        Appointment.end_time > start_time
     ).with_for_update().all()
 
     used_capacity = sum([a.capacity_used for a in overlapping])
-    if used_capacity + request.capacity_used > resource.capacity:
+    if used_capacity + request.capacity_used > resource.capacity:  # type: ignore[operator]
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Resource capacity exceeded for selected slot")
 
     # Also check service-level capacity
     overlapping_service = db.query(Appointment).filter(
         Appointment.service_id == service.id,
         Appointment.status != 'CANCELLED',
-        Appointment.start_time < request.end_time,
-        Appointment.end_time > request.start_time
+        Appointment.start_time < end_time,
+        Appointment.end_time > start_time
     ).with_for_update().all()
     used_service = sum([a.capacity_used for a in overlapping_service])
-    if used_service + request.capacity_used > service.capacity:
+    if used_service + request.capacity_used > service.capacity:  # type: ignore[operator]
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Service capacity exceeded for selected slot")
 
     appointment = Appointment(
         service_id=service.id,
         customer_id=current_user.id,
         resource_id=resource.id,
-        start_time=request.start_time,
-        end_time=request.end_time,
+        start_time=start_time,
+        end_time=end_time,
         status='CONFIRMED',
         capacity_used=request.capacity_used,
         notes=request.notes,
@@ -1594,13 +1797,28 @@ def create_appointment(request: AppointmentCreateRequest, current_user: User = D
     db.commit()
     db.refresh(appointment)
 
+    # Send appointment confirmation email with calendar link
+    try:
+        email_service.send_appointment_confirmation_email(
+            email=current_user.email,
+            user_name=current_user.first_name,
+            service_name=service.name,
+            start_time=start_time,
+            end_time=end_time,
+            resource_name=resource.name,
+            notes=request.notes
+        )
+    except Exception as e:
+        logger.warning(f"Failed to send appointment confirmation email: {str(e)}")
+        # Don't fail the appointment creation if email fails
+
     return appointment
 
 
 @app.get("/api/appointments", response_model=List[AppointmentResponse])
 def list_appointments(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     roles = get_user_roles(current_user.id, db)
-    if "ORGANIZER" in roles:
+    if "ORGANIZER" in roles or "ADMIN" in roles:
         # appointments for organizer's services
         services = db.query(Service).filter(Service.created_by == current_user.id).all()
         service_ids = [s.id for s in services]
@@ -1635,6 +1853,8 @@ def get_appointment(appointment_id: int, current_user: User = Depends(get_curren
 @app.put("/api/appointments/{appointment_id}/reschedule", response_model=AppointmentResponse)
 def reschedule_appointment(appointment_id: int, request: RescheduleRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Reschedule an appointment to a new date/time."""
+    start_time = normalize_datetime_to_utc(request.start_time)
+    end_time = normalize_datetime_to_utc(request.end_time)
     appt = db.query(Appointment).filter(Appointment.id == appointment_id).first()
     if not appt:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Appointment not found")
@@ -1642,7 +1862,7 @@ def reschedule_appointment(appointment_id: int, request: RescheduleRequest, curr
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
     if appt.status == "CANCELLED":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot reschedule a cancelled appointment")
-    if request.start_time >= request.end_time:
+    if start_time >= end_time:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid time range")
 
     # Check resource capacity for new time
@@ -1653,19 +1873,37 @@ def reschedule_appointment(appointment_id: int, request: RescheduleRequest, curr
                 Appointment.resource_id == appt.resource_id,
                 Appointment.id != appt.id,
                 Appointment.status != 'CANCELLED',
-                Appointment.start_time < request.end_time,
-                Appointment.end_time > request.start_time
+                Appointment.start_time < end_time,
+                Appointment.end_time > start_time
             ).with_for_update().all()
             used = sum(a.capacity_used for a in overlapping)
             if used + appt.capacity_used > resource.capacity:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Resource capacity exceeded for new time slot")
 
-    appt.start_time = request.start_time
-    appt.end_time = request.end_time
-    appt.status = "RESCHEDULED"
-    appt.updated_at = datetime.now(timezone.utc)
+    appt.start_time = start_time  # type: ignore[assignment]
+    appt.end_time = end_time  # type: ignore[assignment]
+    appt.status = "RESCHEDULED"  # type: ignore[assignment]
+    appt.updated_at = datetime.now(timezone.utc)  # type: ignore[assignment]
     db.commit()
     db.refresh(appt)
+
+    # Send rescheduled appointment confirmation email with updated calendar link
+    try:
+        service = db.query(Service).filter(Service.id == appt.service_id).first()
+        resource = db.query(Resource).filter(Resource.id == appt.resource_id).first() if appt.resource_id else None
+        if service:
+            email_service.send_appointment_confirmation_email(
+                email=current_user.email,
+                user_name=current_user.first_name,
+                service_name=service.name,
+                start_time=start_time,
+                end_time=end_time,
+                resource_name=resource.name if resource else None,
+                notes=appt.notes
+            )
+    except Exception as e:
+        logger.warning(f"Failed to send rescheduled appointment email: {str(e)}")
+
     return appt
 
 
@@ -1675,17 +1913,17 @@ def cancel_appointment(appointment_id: int, request: Optional[CancelAppointmentR
     appt = db.query(Appointment).filter(Appointment.id == appointment_id).first()
     if not appt:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Appointment not found")
-    if appt.customer_id != current_user.id:
+    if appt.customer_id != current_user.id:  # type: ignore[operator]
         roles = get_user_roles(current_user.id, db)
         if "ADMIN" not in roles:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
-    if appt.status == "CANCELLED":
+    if appt.status == "CANCELLED":  # type: ignore[operator]
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Appointment already cancelled")
-    appt.status = "CANCELLED"
-    appt.cancelled_at = datetime.now(timezone.utc)
+    appt.status = "CANCELLED"  # type: ignore[assignment]
+    appt.cancelled_at = datetime.now(timezone.utc)  # type: ignore[assignment]
     if request and request.cancellation_reason:
-        appt.cancellation_reason = request.cancellation_reason
-    appt.updated_at = datetime.now(timezone.utc)
+        appt.cancellation_reason = request.cancellation_reason  # type: ignore[assignment]
+    appt.updated_at = datetime.now(timezone.utc)  # type: ignore[assignment]
     db.commit()
     return {"message": "Appointment cancelled"}
 
@@ -1696,25 +1934,28 @@ def get_appointment_confirmation(appointment_id: int, current_user: User = Depen
     appt = db.query(Appointment).filter(Appointment.id == appointment_id).first()
     if not appt:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Appointment not found")
-    if appt.customer_id != current_user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
     service = db.query(Service).filter(Service.id == appt.service_id).first()
+    roles = get_user_roles(current_user.id, db)
+    if appt.customer_id != current_user.id:  # type: ignore[operator]
+        can_view_as_owner = bool(service and service.created_by == current_user.id)
+        if "ADMIN" not in roles and not can_view_as_owner:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
     resource = db.query(Resource).filter(Resource.id == appt.resource_id).first() if appt.resource_id else None
     return {
         "appointment_id": appt.id,
         "status": appt.status,
         "service_name": service.name if service else None,
         "resource_name": resource.name if resource else None,
-        "start_time": appt.start_time.isoformat() if appt.start_time else None,
-        "end_time": appt.end_time.isoformat() if appt.end_time else None,
+        "start_time": serialize_datetime(appt.start_time),
+        "end_time": serialize_datetime(appt.end_time),
         "capacity_used": appt.capacity_used,
         "notes": appt.notes,
-        "created_at": appt.created_at.isoformat() if appt.created_at else None,
+        "created_at": serialize_datetime(appt.created_at),
     }
 
 
 @app.put("/api/appointments/{appointment_id}/status")
-def update_appointment_status(appointment_id: int, request: UpdateStatusRequest, current_user: User = Depends(require_role("ORGANIZER")), db: Session = Depends(get_db)):
+def update_appointment_status(appointment_id: int, request: UpdateStatusRequest, current_user: User = Depends(require_role("ORGANIZER", "ADMIN")), db: Session = Depends(get_db)):
     """Update appointment status (Organizer only)."""
     valid_statuses = ("PENDING", "CONFIRMED", "CANCELLED", "RESCHEDULED", "COMPLETED", "NO_SHOW")
     if request.status not in valid_statuses:
@@ -1724,12 +1965,12 @@ def update_appointment_status(appointment_id: int, request: UpdateStatusRequest,
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Appointment not found")
     service = db.query(Service).filter(Service.id == appt.service_id).first()
     roles = get_user_roles(current_user.id, db)
-    if not service or (service.created_by != current_user.id and "ADMIN" not in roles):
+    if not service or (service.created_by != current_user.id and "ADMIN" not in roles):  # type: ignore[operator]
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
-    appt.status = request.status
+    appt.status = request.status  # type: ignore[assignment]
     if request.status == "CANCELLED":
-        appt.cancelled_at = datetime.now(timezone.utc)
-    appt.updated_at = datetime.now(timezone.utc)
+        appt.cancelled_at = datetime.now(timezone.utc)  # type: ignore[assignment]
+    appt.updated_at = datetime.now(timezone.utc)  # type: ignore[assignment]
     db.commit()
     return {"message": f"Appointment status updated to {request.status}"}
 
@@ -1738,7 +1979,7 @@ def update_appointment_status(appointment_id: int, request: UpdateStatusRequest,
 def get_appointments_calendar(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    current_user: User = Depends(require_role("ORGANIZER")),
+    current_user: User = Depends(require_role("ORGANIZER", "ADMIN")),
     db: Session = Depends(get_db)
 ):
     """Get calendar view of appointments for organizer's services."""
@@ -1769,8 +2010,8 @@ def get_appointments_calendar(
             "service_name": svc.name if svc else None,
             "customer_id": a.customer_id,
             "resource_id": a.resource_id,
-            "start_time": a.start_time.isoformat() if a.start_time else None,
-            "end_time": a.end_time.isoformat() if a.end_time else None,
+            "start_time": serialize_datetime(a.start_time),
+            "end_time": serialize_datetime(a.end_time),
             "status": a.status,
             "capacity_used": a.capacity_used,
         })
@@ -1799,6 +2040,275 @@ def submit_form_responses(appointment_id: int, request: FormResponseSubmitReques
         created.append(fr)
     db.commit()
     return {"message": f"{len(created)} responses submitted"}
+
+
+# ==================== Phase 3: Reports & Insights (Organizer) ====================
+
+
+class AppointmentReportItem(BaseModel):
+    date: str
+    count: int
+
+
+class ResourceUtilizationItem(BaseModel):
+    resource_id: int
+    resource_name: Optional[str]
+    total_appointments: int
+    total_minutes_booked: float
+
+
+@app.get("/api/organizer/reports/appointments", response_model=List[AppointmentReportItem])
+def organizer_appointments_report(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    current_user: User = Depends(require_role("ORGANIZER", "ADMIN")),
+    db: Session = Depends(get_db)
+):
+    """Return appointments count grouped by date for organizer's services."""
+    # default to last 30 days
+    if end_date:
+        try:
+            ed = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid end_date format. Use YYYY-MM-DD")
+    else:
+        ed = datetime.now(timezone.utc) + timedelta(days=1)
+
+    if start_date:
+        try:
+            sd = datetime.strptime(start_date, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid start_date format. Use YYYY-MM-DD")
+    else:
+        sd = ed - timedelta(days=30)
+
+    services = db.query(Service).filter(Service.created_by == current_user.id).all()
+    service_ids = [s.id for s in services]
+    if not service_ids:
+        return []
+
+    rows = db.query(func.date(Appointment.start_time).label('date'), func.count(Appointment.id).label('count')).filter(
+        Appointment.service_id.in_(service_ids),
+        Appointment.start_time >= sd,
+        Appointment.start_time < ed
+    ).group_by(func.date(Appointment.start_time)).order_by(func.date(Appointment.start_time)).all()
+
+    result = []
+    for r in rows:
+        # r[0] is date (datetime.date)
+        d = r[0].isoformat() if hasattr(r[0], 'isoformat') else str(r[0])
+        result.append(AppointmentReportItem(date=d, count=int(r[1])))
+    return result
+
+
+@app.get("/api/organizer/reports/resource-utilization", response_model=List[ResourceUtilizationItem])
+def organizer_resource_utilization(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    current_user: User = Depends(require_role("ORGANIZER", "ADMIN")),
+    db: Session = Depends(get_db)
+):
+    """Return resource utilization metrics for organizer's resources."""
+    if end_date:
+        try:
+            ed = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid end_date format. Use YYYY-MM-DD")
+    else:
+        ed = datetime.now(timezone.utc) + timedelta(days=1)
+
+    if start_date:
+        try:
+            sd = datetime.strptime(start_date, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid start_date format. Use YYYY-MM-DD")
+    else:
+        sd = ed - timedelta(days=30)
+
+    # Find resources for organizer's organizations
+    orgs = db.query(Organization).filter(Organization.admin_user_id == current_user.id, Organization.deleted_at.is_(None)).all()
+    org_ids = [o.id for o in orgs]
+    if not org_ids:
+        return []
+
+    resources = db.query(Resource).filter(Resource.organization_id.in_(org_ids), Resource.deleted_at.is_(None)).all()
+    result = []
+    for r in resources:
+        appts = db.query(Appointment).filter(
+            Appointment.resource_id == r.id,
+            Appointment.start_time >= sd,
+            Appointment.start_time < ed,
+            Appointment.status != 'CANCELLED'
+        ).all()
+        total_appointments = len(appts)
+        total_minutes = 0.0
+        for a in appts:
+            try:
+                delta = (a.end_time - a.start_time).total_seconds() / 60.0
+                total_minutes += delta
+            except Exception:
+                pass
+        result.append(ResourceUtilizationItem(
+            resource_id=r.id, resource_name=r.name, total_appointments=total_appointments, total_minutes_booked=round(total_minutes, 2)
+        ))
+    return result
+
+
+# === Documentation-aligned report endpoints (/api/reports/*) ===
+
+
+@app.get("/api/reports/appointments", response_model=List[AppointmentReportItem])
+def reports_appointments(start_date: Optional[str] = None, end_date: Optional[str] = None, current_user: User = Depends(require_role("ORGANIZER", "ADMIN")), db: Session = Depends(get_db)):
+    return organizer_appointments_report(start_date=start_date, end_date=end_date, current_user=current_user, db=db)
+
+
+@app.get("/api/reports/resource-utilization", response_model=List[ResourceUtilizationItem])
+def reports_resource_utilization(start_date: Optional[str] = None, end_date: Optional[str] = None, current_user: User = Depends(require_role("ORGANIZER", "ADMIN")), db: Session = Depends(get_db)):
+    return organizer_resource_utilization(start_date=start_date, end_date=end_date, current_user=current_user, db=db)
+
+
+@app.get("/api/reports/bookings")
+def reports_bookings(start_date: Optional[str] = None, end_date: Optional[str] = None, current_user: User = Depends(require_role("ORGANIZER", "ADMIN")), db: Session = Depends(get_db)):
+    """Return bookings grouped by service with counts. Matches documented /api/reports/bookings."""
+    # reuse service list
+    if end_date:
+        try:
+            ed = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid end_date format. Use YYYY-MM-DD")
+    else:
+        ed = datetime.now(timezone.utc) + timedelta(days=1)
+    if start_date:
+        try:
+            sd = datetime.strptime(start_date, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid start_date format. Use YYYY-MM-DD")
+    else:
+        sd = ed - timedelta(days=30)
+
+    services = db.query(Service).filter(Service.created_by == current_user.id).all()
+    service_ids = [s.id for s in services]
+    if not service_ids:
+        return []
+
+    rows = db.query(Service.id, Service.name, func.count(Appointment.id).label('count')).join(Appointment, Appointment.service_id == Service.id).filter(
+        Service.id.in_(service_ids), Appointment.start_time >= sd, Appointment.start_time < ed
+    ).group_by(Service.id, Service.name).all()
+
+    return [{"service_id": r[0], "service_name": r[1], "count": int(r[2])} for r in rows]
+
+
+@app.get("/api/reports/revenue")
+def reports_revenue(start_date: Optional[str] = None, end_date: Optional[str] = None, current_user: User = Depends(require_role("ORGANIZER", "ADMIN")), db: Session = Depends(get_db)):
+    """Estimate revenue from advance payments (best-effort).
+    Uses service.advance_payment_amount * appointment.capacity_used for appointments where requires_advance_payment is True.
+    """
+    if end_date:
+        try:
+            ed = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid end_date format. Use YYYY-MM-DD")
+    else:
+        ed = datetime.now(timezone.utc) + timedelta(days=1)
+    if start_date:
+        try:
+            sd = datetime.strptime(start_date, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid start_date format. Use YYYY-MM-DD")
+    else:
+        sd = ed - timedelta(days=30)
+
+    services = db.query(Service).filter(Service.created_by == current_user.id).all()
+    service_ids = [s.id for s in services]
+    if not service_ids:
+        return {"revenue": 0.0}
+
+    total = 0.0
+    appts = db.query(Appointment).filter(Appointment.service_id.in_(service_ids), Appointment.start_time >= sd, Appointment.start_time < ed).all()
+    svc_map = {s.id: s for s in services}
+    for a in appts:
+        svc = svc_map.get(a.service_id)
+        if svc and svc.requires_advance_payment and svc.advance_payment_amount:
+            try:
+                total += float(svc.advance_payment_amount) * (a.capacity_used or 1)
+            except Exception:
+                pass
+    return {"revenue": round(total, 2)}
+
+
+@app.get("/api/reports/customer-insights")
+def reports_customer_insights(start_date: Optional[str] = None, end_date: Optional[str] = None, current_user: User = Depends(require_role("ORGANIZER", "ADMIN")), db: Session = Depends(get_db)):
+    """Return top customers by number of bookings for organizer."""
+    if end_date:
+        try:
+            ed = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid end_date format. Use YYYY-MM-DD")
+    else:
+        ed = datetime.now(timezone.utc) + timedelta(days=1)
+    if start_date:
+        try:
+            sd = datetime.strptime(start_date, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid start_date format. Use YYYY-MM-DD")
+    else:
+        sd = ed - timedelta(days=30)
+
+    services = db.query(Service).filter(Service.created_by == current_user.id).all()
+    service_ids = [s.id for s in services]
+    if not service_ids:
+        return []
+
+    rows = db.query(Appointment.customer_id, func.count(Appointment.id).label('count')).filter(
+        Appointment.service_id.in_(service_ids), Appointment.start_time >= sd, Appointment.start_time < ed
+    ).group_by(Appointment.customer_id).order_by(func.count(Appointment.id).desc()).limit(10).all()
+
+    result = []
+    for r in rows:
+        user = get_user_by_id(r[0], db)
+        result.append({"customer_id": r[0], "email": user.email if user else None, "count": int(r[1])})
+    return result
+
+
+@app.get("/api/reports/export")
+def reports_export(start_date: Optional[str] = None, end_date: Optional[str] = None, current_user: User = Depends(require_role("ORGANIZER", "ADMIN")), db: Session = Depends(get_db)):
+    """Export appointments CSV for organizer's services for a date range."""
+    if end_date:
+        try:
+            ed = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid end_date format. Use YYYY-MM-DD")
+    else:
+        ed = datetime.now(timezone.utc) + timedelta(days=1)
+    if start_date:
+        try:
+            sd = datetime.strptime(start_date, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid start_date format. Use YYYY-MM-DD")
+    else:
+        sd = ed - timedelta(days=30)
+
+    services = db.query(Service).filter(Service.created_by == current_user.id).all()
+    service_ids = [s.id for s in services]
+    if not service_ids:
+        return StreamingResponse(io.StringIO(""), media_type="text/csv")
+
+    appts = db.query(Appointment).filter(Appointment.service_id.in_(service_ids), Appointment.start_time >= sd, Appointment.start_time < ed).order_by(Appointment.start_time).all()
+
+    def iter_csv():
+        buffer = io.StringIO()
+        writer = csv.writer(buffer)
+        writer.writerow(["id", "service_id", "customer_id", "resource_id", "start_time", "end_time", "status", "capacity_used"])
+        yield buffer.getvalue()
+        buffer.seek(0)
+        buffer.truncate(0)
+        for a in appts:
+            writer.writerow([a.id, a.service_id, a.customer_id, a.resource_id, serialize_datetime(a.start_time), serialize_datetime(a.end_time), a.status, a.capacity_used])
+            yield buffer.getvalue()
+            buffer.seek(0)
+            buffer.truncate(0)
+
+    return StreamingResponse(iter_csv(), media_type="text/csv")
 
 
 # ==================== Health Check ====================

@@ -12,6 +12,8 @@ class User(Base):
     first_name = Column(String(100), nullable=False)
     last_name = Column(String(100), nullable=False)
     phone = Column(String(20), nullable=True)
+    profile_picture_url = Column(String(500), nullable=True)
+    preferences = Column(String, nullable=True)
     hashed_password = Column(String, nullable=False)
     is_verified = Column(Boolean, default=False)
     otp_code = Column(String(6), nullable=True)

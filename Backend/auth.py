@@ -3,6 +3,7 @@ from typing import Optional, List, Union
 import secrets
 import random
 import hashlib
+from urllib.parse import quote
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr
@@ -223,7 +224,8 @@ def send_password_reset_email(email: str, reset_token: str) -> bool:
     from config import settings
     
     # Build reset URL
-    reset_url = f"{settings.FRONTEND_URL}/reset-password?token={reset_token}"
+    frontend_base_url = settings.FRONTEND_URL.rstrip("/")
+    reset_url = f"{frontend_base_url}/auth/reset-password/{quote(reset_token, safe='')}"
     
     # Extract user name from email for personalization
     user_name = email.split('@')[0].capitalize()

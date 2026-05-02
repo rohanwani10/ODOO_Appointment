@@ -50,8 +50,8 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     router.push("/auth/login");
   };
 
@@ -275,7 +275,7 @@ export default function DashboardPage() {
                   {isRefreshing ? "Refreshing..." : "Refresh data"}
                 </button>
                 <button
-                  onClick={handleLogout}
+                  onClick={() => void handleLogout()}
                   className="rounded-full border border-white/15 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-white/10"
                 >
                   Logout
