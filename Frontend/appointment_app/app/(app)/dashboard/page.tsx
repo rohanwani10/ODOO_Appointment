@@ -22,7 +22,6 @@ import { motion } from "framer-motion";
 import { useAuth } from "@/hooks/useAuth";
 import { apiFetch } from "@/lib/api";
 import { formatDate, formatDateTime, formatTime } from "@/lib/dates";
-import { getErrorMessage } from "@/lib/errors";
 import type { Appointment } from "@/types/booking";
 import type { Resource } from "@/types/resource";
 import type { Service } from "@/types/service";
@@ -137,14 +136,15 @@ export default function DashboardPage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sectionErrors, setSectionErrors] = useState<SectionErrors>({});
+  const [nowMs, setNowMs] = useState(() => new Date().getTime());
 
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [autoRefreshNotice, setAutoRefreshNotice] = useState<string | null>(null);
 
   const isFresh = useMemo(() => {
     if (!lastUpdated) return false;
-    return Date.now() - lastUpdated.getTime() < 60 * 1000;
-  }, [lastUpdated]);
+    return nowMs - lastUpdated.getTime() < 60 * 1000;
+  }, [lastUpdated, nowMs]);
 
   const loadDashboard = useCallback(
     async (options?: { refresh?: boolean; source?: "manual" | "auto" | "initial" }) => {
@@ -239,7 +239,11 @@ export default function DashboardPage() {
   );
 
   useEffect(() => {
-    loadDashboard({ source: "initial" });
+    const id = window.setTimeout(() => {
+      void loadDashboard({ source: "initial" });
+    }, 0);
+
+    return () => window.clearTimeout(id);
   }, [loadDashboard]);
 
   useEffect(() => {
@@ -249,6 +253,11 @@ export default function DashboardPage() {
 
     return () => window.clearInterval(id);
   }, [loadDashboard]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(new Date().getTime()), 30 * 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   /**
    * Sorting and filtering appointment collections is the most reused computation.
@@ -263,11 +272,10 @@ export default function DashboardPage() {
    * Upcoming events for next-event card and active booking count.
    */
   const upcomingAppointments = useMemo(() => {
-    const now = Date.now();
     return sortedAppointments.filter(
-      (a) => a.status !== "CANCELLED" && new Date(a.start_time).getTime() >= now,
+      (a) => a.status !== "CANCELLED" && new Date(a.start_time).getTime() >= nowMs,
     );
-  }, [sortedAppointments]);
+  }, [sortedAppointments, nowMs]);
 
   const nextAppointment = upcomingAppointments[0] ?? null;
 
@@ -276,7 +284,7 @@ export default function DashboardPage() {
   }, [sortedAppointments]);
 
   const last30Stats = useMemo(() => {
-    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const thirtyDaysAgo = nowMs - 30 * 24 * 60 * 60 * 1000;
     const windowed = appointments.filter(
       (a) => new Date(a.start_time).getTime() >= thirtyDaysAgo,
     );
@@ -284,7 +292,7 @@ export default function DashboardPage() {
     const total = windowed.length;
     const percentage = total === 0 ? 0 : Math.round((confirmed / total) * 100);
     return { total, confirmed, percentage };
-  }, [appointments]);
+  }, [appointments, nowMs]);
 
   const monthlyProgress = useMemo(() => {
     if (isAdmin && adminDashboard) {
@@ -606,6 +614,9 @@ export default function DashboardPage() {
         <section role="region" aria-label="Quick actions and workspace" className="space-y-5">
           <div className="glass rounded-[32px] p-6 sm:p-8">
             <h2 className="mb-5 text-xl font-bold text-white">Quick Actions</h2>
+            {isOrganizer && !isInitialLoading ? (
+              <p className="mb-4 text-xs text-slate-300">{resources.length} resources connected</p>
+            ) : null}
 
             {isInitialLoading ? (
               <div className="space-y-3">

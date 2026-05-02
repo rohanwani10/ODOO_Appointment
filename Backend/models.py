@@ -225,3 +225,10 @@ class ResourceUnavailability(Base):
     __table_args__ = (
         CheckConstraint("start_date_time < end_date_time", name='ck_unavailability_datetime_valid'),
     )
+
+
+class BookingLock(Base):
+    __tablename__ = "booking_locks"
+
+    lock_key = Column(String(255), primary_key=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
