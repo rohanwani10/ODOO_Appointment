@@ -14,9 +14,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Appointment Booking System",
+  title: "Calvero",
   description:
-    "Authentication, profile management, and admin controls for the appointment backend.",
+    "Premium scheduling for teams with Google Calendar sync, instant booking, and automatic meeting generation.",
 };
 
 export default function RootLayout({
@@ -27,7 +27,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-[#0b1020] text-slate-100`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <AuthProvider>
           <main>{children}</main>

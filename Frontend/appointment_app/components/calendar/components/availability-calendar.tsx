@@ -218,7 +218,8 @@ export function AvailabilityCalendar({
           backgroundColor: BUSY_BLOCK_COLORS.background,
           borderColor: BUSY_BLOCK_COLORS.border,
           color: BUSY_BLOCK_COLORS.text,
-          opacity: 0.8,
+          opacity: 0.9,
+          fontWeight: 600,
         },
       };
     }
@@ -234,11 +235,19 @@ export function AvailabilityCalendar({
           backgroundColor: statusColors.background,
           borderColor: statusColors.border,
           color: statusColors.text,
-          fontWeight: 600,
+          fontWeight: 700,
+          boxShadow: "0 10px 30px rgba(15, 23, 42, 0.15)",
         },
       };
     }
-    return {};
+    return {
+      style: {
+        backgroundColor: AVAILABILITY_COLORS.background,
+        borderColor: AVAILABILITY_COLORS.border,
+        color: "#1d4ed8",
+        fontWeight: 700,
+      },
+    };
   };
 
   const ToolbarWithActions = (
