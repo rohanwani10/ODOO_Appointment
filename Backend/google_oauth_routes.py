@@ -1,13 +1,16 @@
 """
 Google OAuth routes for authentication with Google
 """
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import JSONResponse, RedirectResponse
-from sqlalchemy.orm import Session
-from database import get_db
-from google_oauth_service import GoogleOAuthService
-from pydantic import BaseModel
 from typing import Optional
+
+from fastapi import APIRouter, Depends, Header, HTTPException, status
+from sqlalchemy.orm import Session
+from pydantic import BaseModel
+
+from auth import get_user_by_id, verify_access_token
+from database import get_db
+from google_oauth_service import GoogleCalendarService, GoogleMeetService, GoogleOAuthService
+from models import User
 
 router = APIRouter(prefix="/api/auth", tags=["oauth"])
 
@@ -22,6 +25,35 @@ class GoogleAuthResponse(BaseModel):
     refresh_token: str
     token_type: str
     user: dict
+
+
+def get_google_oauth_current_user(
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+) -> User:
+    """Authenticate the caller using the same bearer token flow as the main API."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or invalid authorization header",
+        )
+
+    token = authorization[7:]
+    token_data = verify_access_token(token, db)
+    if token_data is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired access token",
+        )
+
+    user = get_user_by_id(token_data.user_id, db)
+    if user is None or not user.is_active:  # type: ignore[arg-type]
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or inactive",
+        )
+
+    return user
 
 
 @router.get("/google/authorization-url")
@@ -67,34 +99,22 @@ async def google_callback(request: GoogleAuthRequest, db: Session = Depends(get_
 
 
 @router.get("/google/calendar/list")
-async def get_calendar_list(db: Session = Depends(get_db)):
+async def get_calendar_list(
+    current_user: User = Depends(get_google_oauth_current_user),
+    db: Session = Depends(get_db),
+):
     """Get user's Google Calendar list"""
-    from auth import verify_access_token
-    from fastapi import Header
-    
-    auth_header = Header(default="")
     try:
-        token = auth_header.split(" ")[1] if auth_header else None
-        if not token:
+        result = await GoogleCalendarService.get_calendar_list(current_user)
+        if "error" in result:
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Missing authorization token"
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=result["error"],
             )
-        
-        token_data = verify_access_token(token, db)
-        if not token_data:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token"
-            )
-        
-        from models import User
-        user = db.query(User).filter(User.id == token_data.user_id).first()
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-        
-        result = await GoogleOAuthService.get_calendar_list(user)
+        db.commit()
         return result
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -105,35 +125,13 @@ async def get_calendar_list(db: Session = Depends(get_db)):
 @router.post("/google/calendar/event")
 async def create_calendar_event(
     event_data: dict,
+    current_user: User = Depends(get_google_oauth_current_user),
     db: Session = Depends(get_db)
 ):
     """Create a Google Calendar event with optional Google Meet"""
-    from auth import verify_access_token
-    from fastapi import Header
-    
-    auth_header = Header(default="")
     try:
-        token = auth_header.split(" ")[1] if auth_header else None
-        if not token:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Missing authorization token"
-            )
-        
-        token_data = verify_access_token(token, db)
-        if not token_data:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token"
-            )
-        
-        from models import User
-        user = db.query(User).filter(User.id == token_data.user_id).first()
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-        
-        result = await GoogleOAuthService.create_event(
-            user=user,
+        result = await GoogleCalendarService.create_event(
+            user=current_user,
             title=event_data.get("title", ""),
             description=event_data.get("description", ""),
             start_time=event_data.get("start_time"),
@@ -147,8 +145,11 @@ async def create_calendar_event(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=result["error"]
             )
-        
+
+        db.commit()
         return result
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -157,43 +158,25 @@ async def create_calendar_event(
 
 
 @router.get("/google/meet/{event_id}")
-async def get_meet_link(event_id: str, db: Session = Depends(get_db)):
+async def get_meet_link(
+    event_id: str,
+    current_user: User = Depends(get_google_oauth_current_user),
+    db: Session = Depends(get_db),
+):
     """Get Google Meet link for an event"""
-    from auth import verify_access_token
-    from fastapi import Header
-    
-    auth_header = Header(default="")
     try:
-        token = auth_header.split(" ")[1] if auth_header else None
-        if not token:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Missing authorization token"
-            )
-        
-        token_data = verify_access_token(token, db)
-        if not token_data:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token"
-            )
-        
-        from models import User
-        from google_oauth_service import GoogleMeetService
-        
-        user = db.query(User).filter(User.id == token_data.user_id).first()
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-        
-        meet_link = await GoogleMeetService.get_meet_link(user, event_id)
+        meet_link = await GoogleMeetService.get_meet_link(current_user, event_id)
         
         if not meet_link:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Google Meet link not found for this event"
             )
-        
+
+        db.commit()
         return {"meet_link": meet_link}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

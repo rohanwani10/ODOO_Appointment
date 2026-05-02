@@ -18,6 +18,10 @@ class EmailService:
         self.smtp_username = settings.SMTP_USERNAME
         self.smtp_password = settings.SMTP_PASSWORD
         self.email_from = settings.EMAIL_FROM
+
+    def is_configured(self) -> bool:
+        """Return True when SMTP settings are sufficient to attempt delivery."""
+        return bool(self.smtp_server and self.smtp_port and self.smtp_username and self.smtp_password)
     
     def send_email(self, to_email: str, subject: str, html_content: str, text_content: str = None) -> bool:
         """
@@ -32,6 +36,10 @@ class EmailService:
         Returns:
             True if successful, False otherwise
         """
+        if not self.is_configured():
+            logger.error("SMTP is not configured; refusing to claim email delivery success")
+            return False
+
         try:
             # Create message
             msg = MIMEMultipart("alternative")

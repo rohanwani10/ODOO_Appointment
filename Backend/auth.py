@@ -164,39 +164,53 @@ def verify_refresh_token(token: str, db: Session) -> Optional[int]:
     return int(refresh_token_record.user_id)  # type: ignore[return-value]
 
 
-def revoke_refresh_token(token: str, db: Session) -> bool:
+def revoke_refresh_token(
+    token: str,
+    db: Session,
+    user_id: Optional[Union[int, Column]] = None,
+    commit: bool = True,
+) -> bool:
     """Revoke a specific refresh token."""
     hashed_token = hash_refresh_token(token)
-    refresh_token_record = db.query(RefreshToken).filter(
-        RefreshToken.hashed_token == hashed_token
-    ).first()
+    query = db.query(RefreshToken).filter(RefreshToken.hashed_token == hashed_token)
+    if user_id is not None:
+        query = query.filter(RefreshToken.user_id == user_id)
+
+    refresh_token_record = query.first()
     
     if not refresh_token_record:
         return False
     
     refresh_token_record.is_revoked = True  # type: ignore[assignment]
-    db.commit()
+    if commit:
+        db.commit()
     return True
 
 
-def revoke_all_user_tokens(user_id: Union[int, Column], db: Session) -> bool:
+def revoke_all_user_tokens(user_id: Union[int, Column], db: Session, commit: bool = True) -> bool:
     """Revoke all refresh tokens for a user (logout all devices)."""
     db.query(RefreshToken).filter(
         RefreshToken.user_id == user_id,
         RefreshToken.is_revoked == False
     ).update({RefreshToken.is_revoked: True})
-    db.commit()
+    if commit:
+        db.commit()
     return True
 
 
 # ==================== Password Reset ====================
 
-def generate_password_reset_token(user_id: Union[int, Column], email: Union[str, Column]) -> str:
+def generate_password_reset_token(
+    user_id: Union[int, Column],
+    email: Union[str, Column],
+    token_version: Union[int, Column],
+) -> str:
     """Generate a password reset token."""
     expire = datetime.now(timezone.utc) + timedelta(hours=1)  # 1 hour expiry
     to_encode = {
         "user_id": user_id,
         "email": email,
+        "token_version": token_version,
         "exp": expire,
         "type": "password_reset"
     }
@@ -214,7 +228,8 @@ def verify_password_reset_token(token: str) -> Optional[dict]:
         
         return {
             "user_id": payload.get("user_id"),
-            "email": payload.get("email")
+            "email": payload.get("email"),
+            "token_version": payload.get("token_version"),
         }
     except JWTError:
         return None
@@ -282,7 +297,12 @@ def get_user_roles(user_id: Union[int, Column], db: Session) -> List[str]:
     return [str(role.role) for role in roles]  # type: ignore[return-value]
 
 
-def add_user_role(user_id: Union[int, Column], role: str, db: Session) -> Optional[UserRole]:
+def add_user_role(
+    user_id: Union[int, Column],
+    role: str,
+    db: Session,
+    commit: bool = True,
+) -> Optional[UserRole]:
     """Add a role to a user."""
     if role not in ['CUSTOMER', 'ORGANIZER', 'ADMIN']:
         return None
@@ -298,28 +318,35 @@ def add_user_role(user_id: Union[int, Column], role: str, db: Session) -> Option
     
     user_role = UserRole(user_id=user_id, role=role)
     db.add(user_role)
-    db.commit()
-    db.refresh(user_role)
+    if commit:
+        db.commit()
+        db.refresh(user_role)
+    else:
+        db.flush()
     
     return user_role
 
 
-def remove_user_role(user_id: Union[int, Column], role: str, db: Session) -> bool:
+def remove_user_role(user_id: Union[int, Column], role: str, db: Session, commit: bool = True) -> bool:
     """Remove a role from a user."""
     result = db.query(UserRole).filter(
         UserRole.user_id == user_id,
         UserRole.role == role
     ).delete()
-    db.commit()
+    if commit:
+        db.commit()
     return result > 0
 
 
-def soft_delete_user(user_id: Union[int, Column], db: Session) -> bool:
+def soft_delete_user(user_id: Union[int, Column], db: Session, commit: bool = True) -> bool:
     """Soft delete a user."""
     user = get_user_by_id(user_id, db)
     if not user:
         return False
     
     user.deleted_at = datetime.now(timezone.utc)  # type: ignore[assignment]
-    db.commit()
+    user.is_active = False  # type: ignore[assignment]
+    revoke_all_user_tokens(user.id, db, commit=False)
+    if commit:
+        db.commit()
     return True

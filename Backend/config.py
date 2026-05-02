@@ -1,12 +1,18 @@
-from pydantic_settings import BaseSettings
 import os
+from pathlib import Path
+
+from pydantic_settings import BaseSettings
+
+
+BACKEND_DIR = Path(__file__).resolve().parent
+DEFAULT_SQLITE_DB = BACKEND_DIR / "appointment.db"
 
 
 class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = os.getenv(
         "DATABASE_URL",
-        "postgresql://postgres:password@localhost/pg_admin"
+        f"sqlite:///{DEFAULT_SQLITE_DB}"
     )
     
     # JWT
@@ -43,7 +49,7 @@ class Settings(BaseSettings):
     DEBUG: bool = os.getenv("DEBUG", "True").lower() == "true"
     
     API_PREFIX: str = "/api"
-    CORS_ORIGINS: str = "*"
+    CORS_ORIGINS: str = os.getenv("CORS_ORIGINS", "*")
     APP_NAME: str = "Appointment Booking System"
     APP_VERSION: str = "0.1.0"
     

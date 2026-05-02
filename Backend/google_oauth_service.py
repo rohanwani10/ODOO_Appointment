@@ -3,13 +3,12 @@ Google OAuth Service for handling Google authentication and API integrations
 """
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any
-import json
 import httpx
 from urllib.parse import urlencode
 from sqlalchemy.orm import Session
 from config import settings
 from models import User, UserRole
-from auth import create_access_token, create_refresh_token, hash_refresh_token
+from auth import create_access_token, create_refresh_token
 
 
 class GoogleOAuthService:
@@ -18,6 +17,19 @@ class GoogleOAuthService:
     AUTHORIZATION_URL = "https://accounts.google.com/o/oauth2/v2/auth"
     TOKEN_URL = "https://oauth2.googleapis.com/token"
     USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
+
+    @staticmethod
+    def _apply_google_tokens(
+        user: User,
+        access_token: Optional[str],
+        refresh_token: Optional[str],
+        token_expiry: datetime,
+    ) -> None:
+        """Persist the latest Google token data without discarding a stored refresh token."""
+        user.google_access_token = access_token
+        if refresh_token:
+            user.google_refresh_token = refresh_token
+        user.google_token_expiry = token_expiry
     
     @staticmethod
     def get_authorization_url() -> str:
@@ -99,6 +111,9 @@ class GoogleOAuthService:
             google_access_token = token_response.get("access_token")
             google_refresh_token = token_response.get("refresh_token")
             expires_in = token_response.get("expires_in", 3600)
+
+            if not google_access_token:
+                raise ValueError("Google did not return an access token")
             
             # Calculate token expiry
             google_token_expiry = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
@@ -111,27 +126,46 @@ class GoogleOAuthService:
             first_name = user_info.get("given_name", "")
             last_name = user_info.get("family_name", "")
             picture_url = user_info.get("picture", "")
+
+            if not google_id or not email:
+                raise ValueError("Google account data is incomplete")
             
             # Check if user exists by google_id first
-            user = db.query(User).filter(User.google_id == google_id).first()
+            user = db.query(User).filter(
+                User.google_id == google_id,
+                User.deleted_at.is_(None),
+            ).first()
             
             if user:
+                if not user.is_active:
+                    raise ValueError("User account is inactive")
                 # Update existing user with new Google tokens
-                user.google_access_token = google_access_token
-                user.google_refresh_token = google_refresh_token
-                user.google_token_expiry = google_token_expiry
+                GoogleOAuthService._apply_google_tokens(
+                    user,
+                    google_access_token,
+                    google_refresh_token,
+                    google_token_expiry,
+                )
                 if not user.is_verified:
                     user.is_verified = True
             else:
                 # Check if user exists by email
-                user = db.query(User).filter(User.email == email).first()
+                user = db.query(User).filter(
+                    User.email == email,
+                    User.deleted_at.is_(None),
+                ).first()
                 
                 if user:
+                    if not user.is_active:
+                        raise ValueError("User account is inactive")
                     # Link Google account to existing user
                     user.google_id = google_id
-                    user.google_access_token = google_access_token
-                    user.google_refresh_token = google_refresh_token
-                    user.google_token_expiry = google_token_expiry
+                    GoogleOAuthService._apply_google_tokens(
+                        user,
+                        google_access_token,
+                        google_refresh_token,
+                        google_token_expiry,
+                    )
                     user.is_verified = True
                 else:
                     # Create new user
@@ -215,8 +249,15 @@ class GoogleCalendarService:
             
             if response.status_code == 401:
                 # Token expired, refresh it
+                if not user.google_refresh_token:
+                    return {"error": "Google session expired. Reconnect your Google account."}
                 new_tokens = await GoogleOAuthService.refresh_access_token(user.google_refresh_token)
-                user.google_access_token = new_tokens.get("access_token")
+                GoogleOAuthService._apply_google_tokens(
+                    user,
+                    new_tokens.get("access_token"),
+                    new_tokens.get("refresh_token"),
+                    datetime.now(timezone.utc) + timedelta(seconds=new_tokens.get("expires_in", 3600)),
+                )
                 # Token is valid, retry
                 response = await client.get(
                     f"{GoogleCalendarService.CALENDAR_API_BASE}/users/me/calendarList",
@@ -268,8 +309,15 @@ class GoogleCalendarService:
             
             if response.status_code == 401:
                 # Refresh token and retry
+                if not user.google_refresh_token:
+                    return {"error": "Google session expired. Reconnect your Google account."}
                 new_tokens = await GoogleOAuthService.refresh_access_token(user.google_refresh_token)
-                user.google_access_token = new_tokens.get("access_token")
+                GoogleOAuthService._apply_google_tokens(
+                    user,
+                    new_tokens.get("access_token"),
+                    new_tokens.get("refresh_token"),
+                    datetime.now(timezone.utc) + timedelta(seconds=new_tokens.get("expires_in", 3600)),
+                )
                 response = await client.post(
                     f"{GoogleCalendarService.CALENDAR_API_BASE}/calendars/{calendar_id}/events",
                     json=event,
@@ -315,8 +363,15 @@ class GoogleMeetService:
             )
             
             if response.status_code == 401:
+                if not user.google_refresh_token:
+                    return None
                 new_tokens = await GoogleOAuthService.refresh_access_token(user.google_refresh_token)
-                user.google_access_token = new_tokens.get("access_token")
+                GoogleOAuthService._apply_google_tokens(
+                    user,
+                    new_tokens.get("access_token"),
+                    new_tokens.get("refresh_token"),
+                    datetime.now(timezone.utc) + timedelta(seconds=new_tokens.get("expires_in", 3600)),
+                )
                 response = await client.get(
                     f"{GoogleCalendarService.CALENDAR_API_BASE}/calendars/{calendar_id}/events/{event_id}",
                     headers={"Authorization": f"Bearer {user.google_access_token}"}
