@@ -1423,23 +1423,6 @@ export default function AppointmentsPage() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting && hasMore && !isLoadingMore) {
-          loadMore();
-        }
-      },
-      { rootMargin: '160px' },
-    );
-
-    const target = document.getElementById('appointments-load-more-sentinel');
-    if (target) {
-      observer.observe(target);
-    }
-    return () => observer.disconnect();
-  }, [isLoadingMore, hasMore, currentPage, loadMore]);
-
   const sortedAppointments = useMemo(() => {
     return [...appointments].sort((left, right) => compareAppointments(left, right, filters.sort, servicesById, confirmationById));
   }, [appointments, filters.sort, servicesById, confirmationById]);
@@ -1501,6 +1484,23 @@ export default function AppointmentsPage() {
     setIsLoadingMore(true);
     updateQuery({ page: String(currentPage + 1) }, { preservePage: true });
   }, [currentPage, hasMore, updateQuery]);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && hasMore && !isLoadingMore) {
+          loadMore();
+        }
+      },
+      { rootMargin: '160px' },
+    );
+
+    const target = document.getElementById('appointments-load-more-sentinel');
+    if (target) {
+      observer.observe(target);
+    }
+    return () => observer.disconnect();
+  }, [isLoadingMore, hasMore, isLoadingMore, loadMore]);
 
   const onRetry = useCallback(() => {
     void loadAppointments();

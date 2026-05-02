@@ -505,16 +505,23 @@ def validate_runtime_configuration() -> None:
     if settings.SECRET_KEY.startswith("your-secret-key-change-this") and not settings.DEBUG:
         raise RuntimeError("SECRET_KEY must be overridden when DEBUG is disabled")
 
-    if bool(settings.SMTP_USERNAME) != bool(settings.SMTP_PASSWORD):
-        raise RuntimeError("SMTP_USERNAME and SMTP_PASSWORD must be configured together")
+    smtp_has_partial_config = bool(settings.SMTP_USERNAME) != bool(settings.SMTP_PASSWORD)
+    google_has_partial_config = bool(settings.GOOGLE_CLIENT_ID) != bool(settings.GOOGLE_CLIENT_SECRET)
 
-    if bool(settings.GOOGLE_CLIENT_ID) != bool(settings.GOOGLE_CLIENT_SECRET):
-        raise RuntimeError("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be configured together")
-
-    if not email_service.is_configured():
+    if smtp_has_partial_config:
+        logger.warning(
+            "SMTP configuration is incomplete; OTP and password-reset email delivery are disabled "
+            "until both SMTP_USERNAME and SMTP_PASSWORD are set"
+        )
+    elif not email_service.is_configured():
         logger.warning("SMTP is not configured; OTP and password-reset email delivery are disabled")
 
-    if not settings.GOOGLE_CLIENT_ID:
+    if google_has_partial_config:
+        logger.warning(
+            "Google OAuth configuration is incomplete; Google auth/calendar features are disabled "
+            "until both GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are set"
+        )
+    elif not settings.GOOGLE_CLIENT_ID:
         logger.warning("Google OAuth is not configured; Google auth/calendar features are disabled")
 
 @app.on_event("startup")

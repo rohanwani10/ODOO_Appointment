@@ -11,7 +11,7 @@ type ButtonVariant =
   | "link";
 type ButtonSize = "default" | "sm" | "lg" | "icon" | "icon-sm" | "icon-lg";
 
-const buttonVariants: Record<ButtonVariant, string> = {
+const variantStyles: Record<ButtonVariant, string> = {
   default: "bg-sky-400 text-slate-950 hover:bg-sky-300",
   destructive: "bg-red-500 text-white hover:bg-red-400",
   outline: "border border-white/15 bg-transparent text-white hover:bg-white/10",
@@ -28,6 +28,20 @@ const buttonSizes: Record<ButtonSize, string> = {
   "icon-sm": "size-8",
   "icon-lg": "size-12",
 };
+
+function buttonVariants({
+  variant = "default",
+  size = "default",
+}: {
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+} = {}) {
+  return cn(
+    "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-medium transition-colors disabled:pointer-events-none disabled:opacity-50",
+    variantStyles[variant],
+    buttonSizes[size],
+  );
+}
 
 function Button({
   className,
@@ -48,9 +62,7 @@ function Button({
       data-variant={variant}
       data-size={size}
       className={cn(
-        "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-medium transition-colors disabled:pointer-events-none disabled:opacity-50",
-        buttonVariants[variant],
-        buttonSizes[size],
+        buttonVariants({ variant, size }),
         className,
       )}
       {...props}

@@ -8,8 +8,6 @@ import {
   Clock, 
   Settings, 
   Plus,
-  Users,
-  MessageSquare,
   Sparkles
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -19,8 +17,6 @@ const sidebarItems = [
   { icon: LayoutDashboard, label: "Overview", href: "/dashboard" },
   { icon: CalendarDays, label: "Availability", href: "/dashboard/availability" },
   { icon: Clock, label: "Bookings", href: "/appointments" },
-  { icon: MessageSquare, label: "Feedback", href: "/feedback" },
-  { icon: Users, label: "Team", href: "/team" },
   { icon: Settings, label: "Settings", href: "/settings" },
 ];
 
