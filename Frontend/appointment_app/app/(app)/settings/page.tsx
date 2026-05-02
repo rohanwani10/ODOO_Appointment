@@ -5,6 +5,18 @@ import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { User } from "@/types/user";
+import { motion } from "framer-motion";
+import { 
+  User as UserIcon, 
+  Lock, 
+  Mail, 
+  Phone, 
+  ShieldCheck, 
+  Sparkles,
+  ArrowRight,
+  Settings
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -17,11 +29,13 @@ export default function SettingsPage() {
   const [profileError, setProfileError] = useState("");
   const [passwordMessage, setPasswordMessage] = useState("");
   const [passwordError, setPasswordError] = useState("");
+  
   const [profileForm, setProfileForm] = useState({
     first_name: "",
     last_name: "",
     phone: "",
   });
+  
   const [passwordForm, setPasswordForm] = useState({
     current_password: "",
     new_password: "",
@@ -46,12 +60,8 @@ export default function SettingsPage() {
     fetchProfile();
   }, []);
 
-  const updateField = (field: keyof typeof profileForm, value: string) => {
-    setProfileForm((current) => ({ ...current, [field]: value }));
-  };
-
-  const saveProfile = async (event: React.FormEvent) => {
-    event.preventDefault();
+  const saveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
     setSavingProfile(true);
     setProfileMessage("");
     setProfileError("");
@@ -59,24 +69,19 @@ export default function SettingsPage() {
     try {
       const updated = await apiFetch<User>("/api/users/me", {
         method: "PUT",
-        body: JSON.stringify({
-          first_name: profileForm.first_name,
-          last_name: profileForm.last_name,
-          phone: profileForm.phone || null,
-        }),
+        body: JSON.stringify(profileForm),
       });
-
       setUserProfile(updated);
-      setProfileMessage("Profile updated successfully.");
-    } catch (error: any) {
-      setProfileError(error.message || "Failed to update profile.");
+      setProfileMessage("Identity updated successfully.");
+    } catch (err: any) {
+      setProfileError(err.message || "Failed to update profile.");
     } finally {
       setSavingProfile(false);
     }
   };
 
-  const savePassword = async (event: React.FormEvent) => {
-    event.preventDefault();
+  const savePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
     setSavingPassword(true);
     setPasswordMessage("");
     setPasswordError("");
@@ -86,163 +91,181 @@ export default function SettingsPage() {
         method: "POST",
         body: JSON.stringify(passwordForm),
       });
-
-      setPasswordMessage("Password changed. Redirecting to login...");
-      setPasswordForm({ current_password: "", new_password: "" });
+      setPasswordMessage("Credentials secured. Relogging...");
       await logout();
-      router.replace("/auth/login");
-    } catch (error: any) {
-      setPasswordError(error.message || "Failed to change password.");
+      setTimeout(() => router.replace("/auth/login"), 1500);
+    } catch (err: any) {
+      setPasswordError(err.message || "Security update failed.");
     } finally {
       setSavingPassword(false);
     }
   };
 
   return (
-    <div className="space-y-8">
-      <header className="rounded-3xl border border-white/10 bg-white/5 p-8 backdrop-blur">
-        <h1 className="text-3xl font-semibold tracking-tight text-white">
-          Settings
-        </h1>
-        <p className="mt-2 text-slate-300">
-          Manage the profile data that the backend stores for this account.
-        </p>
-      </header>
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="space-y-10 pb-20"
+    >
+      {/* Page Header */}
+      <section className="glass-premium rounded-[40px] p-10">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-primary font-bold uppercase tracking-widest text-[10px]">
+              <Settings className="size-3.5" />
+              Account Preferences
+            </div>
+            <h1 className="text-gradient text-4xl font-bold tracking-tight">
+              Settings & Security
+            </h1>
+            <p className="text-slate-400 max-w-xl">
+              Configure your personal identity and secure your access credentials.
+            </p>
+          </div>
+          <div className="glass flex items-center gap-3 rounded-full px-6 py-3 border-white/5">
+            <ShieldCheck className="size-4 text-emerald-400" />
+            <span className="text-xs font-bold uppercase tracking-widest text-white">Trust Level: Verified</span>
+          </div>
+        </div>
+      </section>
 
       {isLoading ? (
-        <div className="rounded-3xl border border-white/10 bg-slate-950/60 p-8 text-slate-300">
-          Loading profile...
+        <div className="flex h-64 items-center justify-center">
+           <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }} className="size-10 rounded-full border-t-2 border-primary" />
         </div>
       ) : (
-        <div className="grid gap-6 lg:grid-cols-2">
-          <form
+        <div className="grid gap-8 lg:grid-cols-2">
+          {/* Profile Form */}
+          <motion.form 
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
             onSubmit={saveProfile}
-            className="rounded-3xl border border-white/10 bg-slate-950/70 p-6"
+            className="glass-premium group rounded-[40px] p-8 lg:p-10"
           >
-            <h2 className="text-lg font-semibold text-white">
-              Profile information
-            </h2>
-            <div className="mt-5 space-y-4">
-              <div>
-                <label className="mb-1 block text-sm text-slate-300">
-                  First name
-                </label>
-                <input
-                  value={profileForm.first_name}
-                  onChange={(event) =>
-                    updateField("first_name", event.target.value)
-                  }
-                  className="w-full rounded-2xl border border-white/10 bg-slate-900/90 px-4 py-3 text-white outline-none focus:border-sky-400/70 focus:ring-2 focus:ring-sky-400/20"
-                  required
-                />
+            <div className="flex items-center gap-4 mb-8">
+              <div className="flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                <UserIcon className="size-6" />
               </div>
-              <div>
-                <label className="mb-1 block text-sm text-slate-300">
-                  Last name
-                </label>
-                <input
-                  value={profileForm.last_name}
-                  onChange={(event) =>
-                    updateField("last_name", event.target.value)
-                  }
-                  className="w-full rounded-2xl border border-white/10 bg-slate-900/90 px-4 py-3 text-white outline-none focus:border-sky-400/70 focus:ring-2 focus:ring-sky-400/20"
-                  required
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm text-slate-300">
-                  Phone
-                </label>
-                <input
-                  value={profileForm.phone}
-                  onChange={(event) => updateField("phone", event.target.value)}
-                  className="w-full rounded-2xl border border-white/10 bg-slate-900/90 px-4 py-3 text-white outline-none focus:border-sky-400/70 focus:ring-2 focus:ring-sky-400/20"
-                  placeholder="Optional"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm text-slate-300">
-                  Email
-                </label>
-                <div className="rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-3 text-slate-300">
-                  {userProfile?.email}
+              <h2 className="text-2xl font-bold text-white">Profile Identity</h2>
+            </div>
+
+            <div className="space-y-6">
+              <div className="grid gap-6 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 ml-1">First Name</label>
+                  <input
+                    value={profileForm.first_name}
+                    onChange={(e) => setProfileForm({ ...profileForm, first_name: e.target.value })}
+                    className="w-full rounded-2xl border border-white/5 bg-white/5 px-4 py-3.5 text-white outline-none focus:border-primary/50"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 ml-1">Last Name</label>
+                  <input
+                    value={profileForm.last_name}
+                    onChange={(e) => setProfileForm({ ...profileForm, last_name: e.target.value })}
+                    className="w-full rounded-2xl border border-white/5 bg-white/5 px-4 py-3.5 text-white outline-none focus:border-primary/50"
+                    required
+                  />
                 </div>
               </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 ml-1">Phone Number</label>
+                <div className="relative">
+                  <Phone className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-slate-500" />
+                  <input
+                    value={profileForm.phone}
+                    onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
+                    className="w-full rounded-2xl border border-white/5 bg-white/5 pl-12 pr-4 py-3.5 text-white outline-none focus:border-primary/50"
+                    placeholder="+1 (555) 000-0000"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 ml-1">Registered Email</label>
+                <div className="relative">
+                  <Mail className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-slate-500" />
+                  <div className="w-full rounded-2xl border border-white/5 bg-white/[0.02] pl-12 pr-4 py-3.5 text-slate-500">
+                    {userProfile?.email}
+                  </div>
+                </div>
+              </div>
+
               <button
                 type="submit"
                 disabled={savingProfile}
-                className="rounded-full bg-sky-400 px-4 py-2 text-sm font-semibold text-slate-950 transition-colors hover:bg-sky-300 disabled:cursor-not-allowed disabled:opacity-60"
+                className="group relative flex h-14 w-full items-center justify-center rounded-2xl bg-white font-bold text-slate-950 transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-50"
               >
-                {savingProfile ? "Saving..." : "Save profile"}
+                {savingProfile ? "Syncing..." : "Update Identity"}
+                <Sparkles className="ml-2 size-4 text-primary" />
               </button>
-              {profileMessage && (
-                <p className="text-sm text-emerald-300">{profileMessage}</p>
-              )}
-              {profileError && (
-                <p className="text-sm text-red-300">{profileError}</p>
-              )}
-            </div>
-          </form>
 
-          <form
+              {profileMessage && <p className="text-center text-xs font-bold text-emerald-400 uppercase tracking-widest">{profileMessage}</p>}
+              {profileError && <p className="text-center text-xs font-bold text-rose-400 uppercase tracking-widest">{profileError}</p>}
+            </div>
+          </motion.form>
+
+          {/* Password Form */}
+          <motion.form 
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
             onSubmit={savePassword}
-            className="rounded-3xl border border-white/10 bg-slate-950/70 p-6"
+            className="glass-premium rounded-[40px] p-8 lg:p-10"
           >
-            <h2 className="text-lg font-semibold text-white">
-              Change password
-            </h2>
-            <div className="mt-5 space-y-4">
-              <div>
-                <label className="mb-1 block text-sm text-slate-300">
-                  Current password
-                </label>
+            <div className="flex items-center gap-4 mb-8">
+              <div className="flex size-12 items-center justify-center rounded-2xl bg-rose-500/10 text-rose-500">
+                <Lock className="size-6" />
+              </div>
+              <h2 className="text-2xl font-bold text-white">Security Access</h2>
+            </div>
+
+            <div className="space-y-6">
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 ml-1">Current Secret</label>
                 <input
                   type="password"
                   value={passwordForm.current_password}
-                  onChange={(event) =>
-                    setPasswordForm((current) => ({
-                      ...current,
-                      current_password: event.target.value,
-                    }))
-                  }
-                  className="w-full rounded-2xl border border-white/10 bg-slate-900/90 px-4 py-3 text-white outline-none focus:border-sky-400/70 focus:ring-2 focus:ring-sky-400/20"
+                  onChange={(e) => setPasswordForm({ ...passwordForm, current_password: e.target.value })}
+                  className="w-full rounded-2xl border border-white/5 bg-white/5 px-4 py-3.5 text-white outline-none focus:border-rose-500/30"
                   required
                 />
               </div>
-              <div>
-                <label className="mb-1 block text-sm text-slate-300">
-                  New password
-                </label>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 ml-1">New Secret</label>
                 <input
                   type="password"
                   value={passwordForm.new_password}
-                  onChange={(event) =>
-                    setPasswordForm((current) => ({
-                      ...current,
-                      new_password: event.target.value,
-                    }))
-                  }
-                  className="w-full rounded-2xl border border-white/10 bg-slate-900/90 px-4 py-3 text-white outline-none focus:border-sky-400/70 focus:ring-2 focus:ring-sky-400/20"
+                  onChange={(e) => setPasswordForm({ ...passwordForm, new_password: e.target.value })}
+                  className="w-full rounded-2xl border border-white/5 bg-white/5 px-4 py-3.5 text-white outline-none focus:border-rose-500/30"
                   required
                 />
               </div>
+
+              <div className="rounded-2xl bg-rose-500/5 p-4 border border-rose-500/10">
+                <p className="text-xs leading-relaxed text-rose-200/60">
+                  Changing your password will invalidate all active sessions and require a fresh sign-in on all devices.
+                </p>
+              </div>
+
               <button
                 type="submit"
                 disabled={savingPassword}
-                className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-950 transition-colors hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
+                className="group relative flex h-14 w-full items-center justify-center rounded-2xl border border-white/10 bg-white/5 font-bold text-white transition-all hover:bg-white/10 hover:scale-[1.02] active:scale-95 disabled:opacity-50"
               >
-                {savingPassword ? "Updating..." : "Change password"}
+                {savingPassword ? "Securing..." : "Rotate Credentials"}
+                <ArrowRight className="ml-2 size-4 transition-transform group-hover:translate-x-1" />
               </button>
-              {passwordMessage && (
-                <p className="text-sm text-emerald-300">{passwordMessage}</p>
-              )}
-              {passwordError && (
-                <p className="text-sm text-red-300">{passwordError}</p>
-              )}
+
+              {passwordMessage && <p className="text-center text-xs font-bold text-emerald-400 uppercase tracking-widest">{passwordMessage}</p>}
+              {passwordError && <p className="text-center text-xs font-bold text-rose-400 uppercase tracking-widest">{passwordError}</p>}
             </div>
-          </form>
+          </motion.form>
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }

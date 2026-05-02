@@ -29,6 +29,8 @@ class UserResponse(BaseModel):
     first_name: str
     last_name: str
     phone: Optional[str]
+    profile_picture_url: Optional[str]
+    preferences: Optional[str]
     is_verified: bool
     is_active: bool
     created_at: datetime
