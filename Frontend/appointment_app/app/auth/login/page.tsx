@@ -18,6 +18,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { LoginResponse } from "@/types/user";
 import Link from "next/link";
 import { getErrorMessage } from "@/lib/errors";
+import { GoogleLoginButton } from "@/components/auth/google-login-button";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -186,13 +187,27 @@ export default function LoginPage() {
               </button>
             </form>
 
-            <div className="mt-8 text-center">
-              <p className="text-sm text-slate-500">
-                New to Calvero?{" "}
-                <Link href="/auth/register" className="font-bold text-white hover:text-primary transition-colors">
-                  Create account
-                </Link>
-              </p>
+            {/* Google Sign-In Button */}
+            <div className="mt-6">
+              <GoogleLoginButton
+                onSuccess={() => {
+                  router.push("/dashboard");
+                }}
+                onError={setError}
+                className="w-full"
+              />
+            </div>
+
+            {/* Divider */}
+            <div className="relative mt-6 mb-6">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-slate-300 dark:border-white/10" />
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="bg-white px-3 text-slate-500 dark:bg-slate-950/50 dark:text-slate-400">
+                  New to Calvero?
+                </span>
+              </div>
             </div>
           </div>
         </motion.div>

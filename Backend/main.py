@@ -24,6 +24,7 @@ from models import (
     ResourceWorkingHours, ResourceUnavailability, AuditLog
 )
 from email_service import email_service
+from google_oauth_routes import router as google_oauth_router
 from auth import (
     create_access_token,
     create_refresh_token,
@@ -426,6 +427,9 @@ app.add_middleware(
 if not os.path.exists("uploads"):
     os.makedirs("uploads/profiles", exist_ok=True)
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+
+# Include Google OAuth routes
+app.include_router(google_oauth_router)
 
 
 # ==================== Startup & Teardown ====================

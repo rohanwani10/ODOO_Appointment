@@ -28,6 +28,17 @@ class Settings(BaseSettings):
     # Frontend URL (for reset password links)
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
     
+    # Google OAuth Configuration
+    GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
+    GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
+    GOOGLE_REDIRECT_URI: str = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:3000/auth/google-callback")
+    GOOGLE_SCOPES: list = [
+        "https://www.googleapis.com/auth/userinfo.profile",
+        "https://www.googleapis.com/auth/userinfo.email",
+        "https://www.googleapis.com/auth/calendar",
+        "https://www.googleapis.com/auth/calendar.events",
+    ]
+    
     # Server
     DEBUG: bool = os.getenv("DEBUG", "True").lower() == "true"
     

@@ -23,6 +23,14 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     deleted_at = Column(DateTime(timezone=True), nullable=True)
+    
+    # Google OAuth
+    google_id = Column(String(500), unique=True, nullable=True, index=True)
+    google_access_token = Column(String, nullable=True)
+    google_refresh_token = Column(String, nullable=True)
+    google_token_expiry = Column(DateTime(timezone=True), nullable=True)
+    google_calendar_id = Column(String(500), nullable=True)
+    google_meet_enabled = Column(Boolean, default=False)
 
 
 class UserRole(Base):

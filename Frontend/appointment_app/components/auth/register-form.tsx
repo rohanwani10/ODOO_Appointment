@@ -17,6 +17,7 @@ import { setTokens } from "@/lib/auth";
 import { useAuth } from "@/hooks/useAuth";
 import { LoginResponse, UserRole } from "@/types/user";
 import Link from "next/link";
+import { GoogleLoginButton } from "./google-login-button";
 
 interface RegisterFormProps {
   role: UserRole;
@@ -297,6 +298,17 @@ export default function RegisterForm({
                 )}
               </button>
             </form>
+
+            {/* Google Sign-In Button */}
+            <div className="mt-6">
+              <GoogleLoginButton
+                onSuccess={() => {
+                  router.push("/dashboard");
+                }}
+                onError={setError}
+                className="w-full"
+              />
+            </div>
 
             {/* Divider */}
             <div className="relative my-6">
