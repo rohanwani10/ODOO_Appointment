@@ -55,6 +55,13 @@ class GoogleOAuthService:
     @staticmethod
     async def exchange_code_for_tokens(code: str) -> Dict[str, Any]:
         """Exchange authorization code for access and refresh tokens"""
+        if not settings.GOOGLE_CLIENT_ID:
+            raise ValueError("GOOGLE_CLIENT_ID is not configured")
+        if not settings.GOOGLE_CLIENT_SECRET:
+            raise ValueError("GOOGLE_CLIENT_SECRET is not configured")
+        if not settings.GOOGLE_REDIRECT_URI:
+            raise ValueError("GOOGLE_REDIRECT_URI is not configured")
+
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 GoogleOAuthService.TOKEN_URL,
@@ -66,7 +73,18 @@ class GoogleOAuthService:
                     "redirect_uri": settings.GOOGLE_REDIRECT_URI,
                 }
             )
-            response.raise_for_status()
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                try:
+                    error_data = exc.response.json()
+                    error = error_data.get("error", "token_exchange_failed")
+                    description = error_data.get("error_description", "")
+                    raise ValueError(f"Google token exchange failed: {error}. {description}".strip())
+                except ValueError:
+                    raise
+                except Exception:
+                    raise ValueError(f"Google token exchange failed with status {exc.response.status_code}")
             return response.json()
     
     @staticmethod
@@ -173,7 +191,6 @@ class GoogleOAuthService:
                         email=email,
                         first_name=first_name,
                         last_name=last_name,
-                        profile_picture_url=picture_url,
                         hashed_password="",  # OAuth users don't have passwords
                         google_id=google_id,
                         google_access_token=google_access_token,
@@ -217,7 +234,6 @@ class GoogleOAuthService:
                     "email": user.email,
                     "first_name": user.first_name,
                     "last_name": user.last_name,
-                    "profile_picture_url": user.profile_picture_url,
                     "is_verified": user.is_verified,
                     "roles": roles,
                 }

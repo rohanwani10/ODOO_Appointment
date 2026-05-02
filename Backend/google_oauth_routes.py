@@ -91,6 +91,13 @@ async def google_callback(request: GoogleAuthRequest, db: Session = Depends(get_
             token_type=result["token_type"],
             user=result["user"]
         )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
