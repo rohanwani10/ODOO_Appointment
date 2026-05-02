@@ -1,10 +1,10 @@
 export interface Organization {
-  id: string; // UUID
+  id: number;
   name: string;
-  admin_user_id: string; // UUID
-  description?: string;
-  logo_url?: string;
+  admin_user_id: number;
+  description?: string | null;
+  logo_url?: string | null;
   created_at: string;
-  updated_at: string;
+  updated_at?: string | null;
   deleted_at?: string;
 }

@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Union
 import secrets
 import random
@@ -61,7 +61,11 @@ def hash_password(password: str) -> str:
 
 def verify_password(plain_password: str, hashed_password: Union[str, Column]) -> bool:
     """Verify a password against its hash."""
-    return pwd_context.verify(plain_password, hashed_password)  # type: ignore[arg-type]
+    try:
+        return pwd_context.verify(plain_password, hashed_password)  # type: ignore[arg-type]
+    except Exception:
+        # Any error during verification should be treated as a failed match
+        return False
 
 
 def hash_refresh_token(refresh_token: str) -> str:
@@ -89,7 +93,7 @@ def verify_otp(user: User, provided_otp: str) -> bool:
     if not user.otp_code or not user.otp_expires_at:  # type: ignore[arg-type]
         return False
     
-    if datetime.utcnow() > user.otp_expires_at:  # type: ignore[operator]
+    if datetime.now(timezone.utc) > user.otp_expires_at:  # type: ignore[operator]
         return False
     
     return bool(user.otp_code == provided_otp)  # type: ignore[return-value]
@@ -103,7 +107,7 @@ def create_access_token(user_id: Union[int, Column], email: Union[str, Column], 
     if expires_delta is None:
         expires_delta = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     
-    expire = datetime.utcnow() + expires_delta
+    expire = datetime.now(timezone.utc) + expires_delta
     to_encode = {
         "user_id": user_id,
         "email": email,
@@ -144,14 +148,14 @@ def verify_refresh_token(token: str, db: Session) -> Optional[int]:
     refresh_token_record = db.query(RefreshToken).filter(
         RefreshToken.hashed_token == hashed_token,
         RefreshToken.is_revoked == False,
-        RefreshToken.expires_at > datetime.utcnow()
+        RefreshToken.expires_at > datetime.now(timezone.utc)
     ).first()
     
     if not refresh_token_record:
         return None
     
     # Update last_used_at
-    refresh_token_record.last_used_at = datetime.utcnow()  # type: ignore[assignment]
+    refresh_token_record.last_used_at = datetime.now(timezone.utc)  # type: ignore[assignment]
     db.commit()
     
     return int(refresh_token_record.user_id)  # type: ignore[return-value]
@@ -186,7 +190,7 @@ def revoke_all_user_tokens(user_id: Union[int, Column], db: Session) -> bool:
 
 def generate_password_reset_token(user_id: Union[int, Column], email: Union[str, Column]) -> str:
     """Generate a password reset token."""
-    expire = datetime.utcnow() + timedelta(hours=1)  # 1 hour expiry
+    expire = datetime.now(timezone.utc) + timedelta(hours=1)  # 1 hour expiry
     to_encode = {
         "user_id": user_id,
         "email": email,
@@ -312,6 +316,6 @@ def soft_delete_user(user_id: Union[int, Column], db: Session) -> bool:
     if not user:
         return False
     
-    user.deleted_at = datetime.utcnow()  # type: ignore[assignment]
+    user.deleted_at = datetime.now(timezone.utc)  # type: ignore[assignment]
     db.commit()
     return True

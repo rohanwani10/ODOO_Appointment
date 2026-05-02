@@ -4,8 +4,10 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { setTokens } from "@/lib/auth";
+import { useAuth } from "@/hooks/useAuth";
 import { LoginResponse } from "@/types/user";
 import Link from "next/link";
+import { getErrorMessage } from "@/lib/errors";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -13,6 +15,7 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
+  const { refreshUser } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,9 +29,14 @@ export default function LoginPage() {
       });
 
       setTokens(data.access_token, data.refresh_token);
-      router.push("/dashboard");
-    } catch (err: any) {
-      setError(err.message || "Failed to login");
+      await refreshUser();
+      const nextPath =
+        typeof window !== "undefined"
+          ? new URLSearchParams(window.location.search).get("next")
+          : null;
+      router.push(nextPath && nextPath.startsWith("/") ? nextPath : "/dashboard");
+    } catch (err) {
+      setError(getErrorMessage(err, "Failed to login"));
     } finally {
       setIsLoading(false);
     }

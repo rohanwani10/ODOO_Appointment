@@ -7,10 +7,10 @@ export type AppointmentStatus =
   | 'NO_SHOW';
 
 export interface Appointment {
-  id: string; // UUID
-  service_id: string; // UUID
-  customer_id: string; // UUID
-  resource_id?: string; // UUID
+  id: number;
+  service_id: number;
+  customer_id: number;
+  resource_id?: number;
   start_time: string;
   end_time: string;
   status: AppointmentStatus;
@@ -23,9 +23,9 @@ export interface Appointment {
 }
 
 export interface BookingFormResponse {
-  id: string;
-  appointment_id: string;
-  question_id: string;
+  id: number;
+  appointment_id: number;
+  question_id: number;
   response: string;
   created_at: string;
 }

@@ -1,6 +1,6 @@
 export interface Service {
-  id: string; // UUID
-  organization_id: string; // UUID
+  id: number;
+  organization_id: number;
   name: string;
   description?: string;
   duration_minutes: number;
@@ -10,7 +10,7 @@ export interface Service {
   max_bookings_per_user?: number;
   requires_advance_payment: boolean;
   advance_payment_amount?: number;
-  created_by: string; // UUID (User ID)
+  created_by: number;
   created_at: string;
   updated_at: string;
   deleted_at?: string;

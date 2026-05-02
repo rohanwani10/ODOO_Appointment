@@ -8,6 +8,8 @@ import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard" },
+  { href: "/appointments", label: "Appointments" },
+  { href: "/organizer", label: "Organizer" },
   { href: "/settings", label: "Settings" },
   { href: "/admin", label: "Admin" },
 ];
@@ -25,6 +27,10 @@ export function AppHeader() {
   const visibleNavItems = navItems.filter((item) => {
     if (item.href === "/admin") {
       return isAdmin;
+    }
+
+    if (item.href === "/organizer") {
+      return isOrganizer;
     }
 
     return true;

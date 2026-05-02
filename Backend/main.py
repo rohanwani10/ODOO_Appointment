@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, status, Header
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List
 from functools import wraps
 
@@ -50,6 +50,7 @@ class RegisterRequest(BaseModel):
     last_name: str
     phone: Optional[str] = None
     password: str
+    role: Optional[str] = "CUSTOMER"  # CUSTOMER or ORGANIZER
 
 
 class SendOTPRequest(BaseModel):
@@ -110,6 +111,23 @@ class ErrorResponse(BaseModel):
     error: dict
 
 
+class OrganizationCreateRequest(BaseModel):
+    name: str
+    description: Optional[str] = None
+
+
+class OrganizationResponse(BaseModel):
+    id: int
+    name: str
+    admin_user_id: int
+    description: Optional[str]
+    logo_url: Optional[str]
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 # ==================== Phase 2: Pydantic Models (Services & Appointments) ====================
 class ServiceResponse(BaseModel):
     id: int
@@ -120,6 +138,9 @@ class ServiceResponse(BaseModel):
     capacity: int
     is_published: bool
     shareable_link: Optional[str]
+    max_bookings_per_user: Optional[int]
+    requires_advance_payment: bool
+    advance_payment_amount: Optional[float]
     created_by: int
     created_at: datetime
 
@@ -422,8 +443,25 @@ def register(request: RegisterRequest, db: Session = Depends(get_db)):
         db=db
     )
     
-    # Assign CUSTOMER role by default
-    add_user_role(user.id, "CUSTOMER", db)  # type: ignore[union-attr]
+    # Assign role (default CUSTOMER, allow ORGANIZER during public signup)
+    chosen_role = request.role if request.role in ("CUSTOMER", "ORGANIZER") else "CUSTOMER"
+    add_user_role(user.id, chosen_role, db)  # type: ignore[union-attr]
+
+    if chosen_role == "ORGANIZER":
+        existing_org = db.query(Organization).filter(
+            Organization.admin_user_id == user.id,  # type: ignore[union-attr]
+            Organization.deleted_at.is_(None)
+        ).first()
+        if not existing_org:
+            org_name = f"{request.first_name} {request.last_name}".strip() or request.email.split("@")[0]
+            db.add(
+                Organization(
+                    name=f"{org_name} Organization",
+                    admin_user_id=user.id,  # type: ignore[union-attr]
+                    description="Default organizer workspace",
+                )
+            )
+            db.commit()
     
     # Get user roles for token
     user_roles = get_user_roles(user.id, db)  # type: ignore[union-attr]
@@ -436,7 +474,7 @@ def register(request: RegisterRequest, db: Session = Depends(get_db)):
     refresh_token_record = RefreshToken(
         user_id=user.id,  # type: ignore[union-attr]
         hashed_token=hashed_refresh_token,
-        expires_at=datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+        expires_at=datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     )
     db.add(refresh_token_record)
     db.commit()
@@ -468,7 +506,7 @@ def send_otp(request: SendOTPRequest, db: Session = Depends(get_db)):
     
     # Generate OTP
     otp = generate_otp()
-    otp_expires = datetime.utcnow() + timedelta(minutes=10)  # 10 minutes expiry
+    otp_expires = datetime.now(timezone.utc) + timedelta(minutes=10)  # 10 minutes expiry
     
     # Update user with OTP
     user.otp_code = otp  # type: ignore[assignment]
@@ -542,7 +580,7 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
     refresh_token_record = RefreshToken(
         user_id=user.id,
         hashed_token=hashed_refresh_token,
-        expires_at=datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+        expires_at=datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     )
     db.add(refresh_token_record)
     db.commit()
@@ -666,7 +704,7 @@ def refresh_access_token(
     refresh_token_record = RefreshToken(
         user_id=user.id,
         hashed_token=hashed_new_refresh_token,
-        expires_at=datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+        expires_at=datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     )
     db.add(refresh_token_record)
     db.commit()
@@ -707,7 +745,7 @@ def update_current_user_profile(
     if request.phone is not None:
         current_user.phone = request.phone  # type: ignore[assignment]
     
-    current_user.updated_at = datetime.utcnow()  # type: ignore[assignment]
+    current_user.updated_at = datetime.now(timezone.utc)  # type: ignore[assignment]
     db.commit()
     db.refresh(current_user)
     
@@ -859,6 +897,38 @@ def soft_delete_user_endpoint(
     return {"message": "User deleted successfully"}
 
 
+# ==================== Phase 2: Organization Endpoints ====================
+
+
+@app.get("/api/organizations/mine", response_model=List[OrganizationResponse])
+def list_my_organizations(
+    current_user: User = Depends(require_role("ORGANIZER", "ADMIN")),
+    db: Session = Depends(get_db)
+):
+    organizations = db.query(Organization).filter(
+        Organization.admin_user_id == current_user.id,
+        Organization.deleted_at.is_(None)
+    ).order_by(Organization.created_at.desc()).all()
+    return [OrganizationResponse.from_orm(org) for org in organizations]
+
+
+@app.post("/api/organizations", response_model=OrganizationResponse, status_code=201)
+def create_organization(
+    request: OrganizationCreateRequest,
+    current_user: User = Depends(require_role("ORGANIZER", "ADMIN")),
+    db: Session = Depends(get_db)
+):
+    organization = Organization(
+        name=request.name,
+        description=request.description,
+        admin_user_id=current_user.id,
+    )
+    db.add(organization)
+    db.commit()
+    db.refresh(organization)
+    return organization
+
+
 # ==================== Phase 2: Services Endpoints ====================
 
 
@@ -866,6 +936,18 @@ def soft_delete_user_endpoint(
 def list_services(db: Session = Depends(get_db)):
     """List published services."""
     services = db.query(Service).filter(Service.deleted_at.is_(None), Service.is_published == True).all()
+    return services
+
+
+@app.get("/api/organizer/services", response_model=List[ServiceResponse])
+def list_organizer_services(
+    current_user: User = Depends(require_role("ORGANIZER", "ADMIN")),
+    db: Session = Depends(get_db)
+):
+    services = db.query(Service).filter(
+        Service.created_by == current_user.id,
+        Service.deleted_at.is_(None)
+    ).order_by(Service.created_at.desc()).all()
     return services
 
 
@@ -955,7 +1037,7 @@ def delete_service(service_id: int, current_user: User = Depends(require_role("O
     roles = get_user_roles(current_user.id, db)
     if service.created_by != current_user.id and "ADMIN" not in roles:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
-    service.deleted_at = datetime.utcnow()
+    service.deleted_at = datetime.now(timezone.utc)
     db.commit()
     return {"message": "Service deleted"}
 
@@ -1146,6 +1228,36 @@ def get_resource(resource_id: int, current_user: User = Depends(require_role("OR
     return resource
 
 
+@app.get("/api/resources/{resource_id}/working-hours", response_model=List[WorkingHoursResponse])
+def get_resource_working_hours(
+    resource_id: int,
+    current_user: User = Depends(require_role("ORGANIZER", "ADMIN")),
+    db: Session = Depends(get_db)
+):
+    resource = db.query(Resource).filter(Resource.id == resource_id, Resource.deleted_at.is_(None)).first()
+    if not resource:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
+    _verify_org_owner(current_user.id, resource.organization_id, db)
+
+    working_hours = db.query(ResourceWorkingHours).filter(
+        ResourceWorkingHours.resource_id == resource_id
+    ).order_by(ResourceWorkingHours.day_of_week.asc()).all()
+
+    return [
+        WorkingHoursResponse(
+            id=entry.id,
+            resource_id=entry.resource_id,
+            day_of_week=entry.day_of_week,
+            start_time=str(entry.start_time),
+            end_time=str(entry.end_time),
+            break_start=str(entry.break_start) if entry.break_start else None,
+            break_end=str(entry.break_end) if entry.break_end else None,
+            is_available=entry.is_available,
+        )
+        for entry in working_hours
+    ]
+
+
 @app.post("/api/resources", response_model=ResourceResponse, status_code=201)
 def create_resource(request: ResourceCreateRequest, current_user: User = Depends(require_role("ORGANIZER")), db: Session = Depends(get_db)):
     """Create a new resource."""
@@ -1187,7 +1299,7 @@ def delete_resource(resource_id: int, current_user: User = Depends(require_role(
     if not resource:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
     _verify_org_owner(current_user.id, resource.organization_id, db)
-    resource.deleted_at = datetime.utcnow()
+    resource.deleted_at = datetime.now(timezone.utc)
     db.commit()
     return {"message": "Resource deleted"}
 
@@ -1551,14 +1663,14 @@ def reschedule_appointment(appointment_id: int, request: RescheduleRequest, curr
     appt.start_time = request.start_time
     appt.end_time = request.end_time
     appt.status = "RESCHEDULED"
-    appt.updated_at = datetime.utcnow()
+    appt.updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(appt)
     return appt
 
 
 @app.delete("/api/appointments/{appointment_id}")
-def cancel_appointment(appointment_id: int, request: CancelAppointmentRequest = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def cancel_appointment(appointment_id: int, request: Optional[CancelAppointmentRequest] = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Cancel an appointment."""
     appt = db.query(Appointment).filter(Appointment.id == appointment_id).first()
     if not appt:
@@ -1570,10 +1682,10 @@ def cancel_appointment(appointment_id: int, request: CancelAppointmentRequest = 
     if appt.status == "CANCELLED":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Appointment already cancelled")
     appt.status = "CANCELLED"
-    appt.cancelled_at = datetime.utcnow()
+    appt.cancelled_at = datetime.now(timezone.utc)
     if request and request.cancellation_reason:
         appt.cancellation_reason = request.cancellation_reason
-    appt.updated_at = datetime.utcnow()
+    appt.updated_at = datetime.now(timezone.utc)
     db.commit()
     return {"message": "Appointment cancelled"}
 
@@ -1616,8 +1728,8 @@ def update_appointment_status(appointment_id: int, request: UpdateStatusRequest,
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
     appt.status = request.status
     if request.status == "CANCELLED":
-        appt.cancelled_at = datetime.utcnow()
-    appt.updated_at = datetime.utcnow()
+        appt.cancelled_at = datetime.now(timezone.utc)
+    appt.updated_at = datetime.now(timezone.utc)
     db.commit()
     return {"message": f"Appointment status updated to {request.status}"}
 
@@ -1694,7 +1806,7 @@ def submit_form_responses(appointment_id: int, request: FormResponseSubmitReques
 @app.get("/health")
 def health_check():
     """Health check endpoint."""
-    return {"status": "healthy", "timestamp": datetime.utcnow()}
+    return {"status": "healthy", "timestamp": datetime.now(timezone.utc)}
 
 
 # ==================== 404 Handler ====================
