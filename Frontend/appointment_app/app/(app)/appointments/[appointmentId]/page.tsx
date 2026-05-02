@@ -5,11 +5,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { apiFetch } from "@/lib/api";
-import { formatDate, formatDateTime, formatTime } from "@/lib/dates";
+import { formatDate, formatDateTime, formatTime, toDateInputValue } from "@/lib/dates";
 import { getErrorMessage } from "@/lib/errors";
 import type { Appointment } from "@/types/booking";
 import type { Resource } from "@/types/resource";
-import type { Service } from "@/types/service";
+import type { AvailableSlot, Service } from "@/types/service";
 import {
   AlertCircle,
   ArrowLeft,
@@ -457,6 +457,224 @@ function CancelAppointmentModal({
   );
 }
 
+function RescheduleAppointmentModal({
+  isOpen,
+  appointment,
+  serviceName,
+  selectedDate,
+  onDateChange,
+  slots,
+  selectedSlot,
+  onSelectSlot,
+  onCancel,
+  onConfirm,
+  isLoadingSlots,
+  isLoading,
+  error,
+}: {
+  isOpen: boolean;
+  appointment: Appointment | null;
+  serviceName: string | null;
+  selectedDate: string;
+  onDateChange: (value: string) => void;
+  slots: AvailableSlot[];
+  selectedSlot: AvailableSlot | null;
+  onSelectSlot: (slot: AvailableSlot) => void;
+  onCancel: () => void;
+  onConfirm: () => Promise<void>;
+  isLoadingSlots: boolean;
+  isLoading: boolean;
+  error: string | null;
+}) {
+  const focusRef = useRef<HTMLButtonElement>(null);
+  const prefersReducedMotion = useReducedMotion();
+
+  useEffect(() => {
+    if (isOpen && focusRef.current) {
+      focusRef.current.focus();
+    }
+  }, [isOpen]);
+
+  if (!isOpen || !appointment) {
+    return null;
+  }
+
+  return (
+    <AnimatePresence>
+      {isOpen ? (
+        <>
+          <motion.div
+            initial={prefersReducedMotion ? {} : { opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={prefersReducedMotion ? {} : { opacity: 0 }}
+            className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
+            onClick={onCancel}
+            aria-hidden="true"
+          />
+
+          <motion.div
+            initial={
+              prefersReducedMotion
+                ? {}
+                : { opacity: 0, scale: 0.95, y: 20 }
+            }
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={
+              prefersReducedMotion
+                ? {}
+                : { opacity: 0, scale: 0.95, y: 20 }
+            }
+            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+            className="fixed left-1/2 top-1/2 z-50 w-full max-w-2xl -translate-x-1/2 -translate-y-1/2 px-4"
+          >
+            <div className="rounded-[28px] border border-white/10 bg-slate-950/95 p-6 shadow-2xl backdrop-blur">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-semibold text-white">
+                    Reschedule appointment
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-300">
+                    Choose a new slot for {serviceName || `service #${appointment.service_id}`}.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={onCancel}
+                  className="text-slate-400 transition-colors hover:text-white"
+                  aria-label="Close modal"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="mt-6 grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
+                      Current slot
+                    </p>
+                    <p className="mt-2 text-sm font-medium text-white">
+                      {formatDate(appointment.start_time)}
+                    </p>
+                    <p className="mt-1 text-sm text-slate-300">
+                      {formatTime(appointment.start_time)} to {formatTime(appointment.end_time)}
+                    </p>
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="reschedule-date"
+                      className="block text-sm font-medium text-white"
+                    >
+                      New date
+                    </label>
+                    <input
+                      id="reschedule-date"
+                      type="date"
+                      min={toDateInputValue()}
+                      value={selectedDate}
+                      onChange={(event) => onDateChange(event.target.value)}
+                      className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white outline-none transition-colors hover:border-white/20 focus:border-sky-400/60"
+                    />
+                  </div>
+
+                  {selectedSlot ? (
+                    <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-4">
+                      <p className="text-xs uppercase tracking-[0.2em] text-emerald-200/80">
+                        Selected slot
+                      </p>
+                      <p className="mt-2 text-sm font-medium text-white">
+                        {formatDate(selectedSlot.start_time)}
+                      </p>
+                      <p className="mt-1 text-sm text-emerald-100/90">
+                        {formatTime(selectedSlot.start_time)} to {formatTime(selectedSlot.end_time)}
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="space-y-3">
+                  <p className="text-sm font-medium text-white">Available slots</p>
+
+                  {isLoadingSlots ? (
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
+                      Loading slots...
+                    </div>
+                  ) : slots.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-white/10 bg-white/5 p-4 text-sm text-slate-300">
+                      No alternate slots are available for this date.
+                    </div>
+                  ) : (
+                    <div className="max-h-80 space-y-3 overflow-y-auto pr-1">
+                      {slots.map((slot) => {
+                        const isSelected =
+                          selectedSlot?.start_time === slot.start_time &&
+                          selectedSlot.resource_id === slot.resource_id;
+
+                        return (
+                          <button
+                            key={`${slot.resource_id}-${slot.start_time}`}
+                            type="button"
+                            onClick={() => onSelectSlot(slot)}
+                            className={`w-full rounded-2xl border p-4 text-left transition-colors ${
+                              isSelected
+                                ? "border-sky-300/40 bg-sky-400/10"
+                                : "border-white/10 bg-white/5 hover:bg-white/10"
+                            }`}
+                          >
+                            <p className="text-sm font-medium text-white">
+                              {formatTime(slot.start_time)} to {formatTime(slot.end_time)}
+                            </p>
+                            <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-300">
+                              <span>{slot.resource_name}</span>
+                              <span>{slot.available_capacity} left</span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {error ? (
+                <div className="mt-5 rounded-2xl border border-red-400/20 bg-red-500/10 p-4 text-sm text-red-100">
+                  {error}
+                </div>
+              ) : null}
+
+              <div className="mt-6 flex gap-3">
+                <button
+                  type="button"
+                  onClick={onCancel}
+                  disabled={isLoading}
+                  className="flex-1 rounded-full border border-white/15 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Keep current time
+                </button>
+                <button
+                  ref={focusRef}
+                  type="button"
+                  onClick={() => void onConfirm()}
+                  disabled={isLoading || !selectedSlot}
+                  className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-sky-400 px-4 py-2 text-sm font-semibold text-slate-950 transition-colors hover:bg-sky-300 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isLoading ? (
+                    <RotateCcw className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Calendar className="h-4 w-4" />
+                  )}
+                  {isLoading ? "Rescheduling..." : "Confirm new time"}
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </>
+      ) : null}
+    </AnimatePresence>
+  );
+}
+
 /**
  * Component: Skeleton Loader
  */
@@ -617,7 +835,14 @@ export default function AppointmentDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isCancelling, setIsCancelling] = useState(false);
+  const [isRescheduling, setIsRescheduling] = useState(false);
+  const [isLoadingRescheduleSlots, setIsLoadingRescheduleSlots] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [showRescheduleModal, setShowRescheduleModal] = useState(false);
+  const [rescheduleDate, setRescheduleDate] = useState(toDateInputValue());
+  const [rescheduleSlots, setRescheduleSlots] = useState<AvailableSlot[]>([]);
+  const [selectedRescheduleSlot, setSelectedRescheduleSlot] = useState<AvailableSlot | null>(null);
+  const [rescheduleError, setRescheduleError] = useState<string | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [now, setNow] = useState(new Date());
 
@@ -714,6 +939,63 @@ export default function AppointmentDetailPage() {
     void loadAppointment();
   }, [loadAppointment]);
 
+  useEffect(() => {
+    if (!showRescheduleModal || !appointment?.resource_id) {
+      return;
+    }
+
+    const currentAppointment = appointment;
+    let isCancelled = false;
+
+    async function loadRescheduleSlots() {
+      setIsLoadingRescheduleSlots(true);
+      setRescheduleError(null);
+
+      try {
+        const slots = await apiFetch<AvailableSlot[]>(
+          `/api/services/${currentAppointment.service_id}/availability`,
+          {
+            params: {
+              date: rescheduleDate,
+              resource_id: String(currentAppointment.resource_id),
+            },
+          },
+        );
+
+        if (!isCancelled) {
+          setRescheduleSlots(slots);
+          setSelectedRescheduleSlot((current) =>
+            current
+              ? slots.find(
+                  (slot) =>
+                    slot.start_time === current.start_time &&
+                    slot.resource_id === current.resource_id,
+                ) ?? null
+              : null,
+          );
+        }
+      } catch (loadError) {
+        if (!isCancelled) {
+          setRescheduleError(
+            getErrorMessage(loadError, "Unable to load available slots."),
+          );
+          setRescheduleSlots([]);
+          setSelectedRescheduleSlot(null);
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsLoadingRescheduleSlots(false);
+        }
+      }
+    }
+
+    void loadRescheduleSlots();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [appointment?.resource_id, appointment?.service_id, rescheduleDate, showRescheduleModal]);
+
   /**
    * Add toast notification
    */
@@ -760,6 +1042,55 @@ export default function AppointmentDetailPage() {
     [appointment, addToast, router],
   );
 
+  const handleOpenRescheduleModal = useCallback(() => {
+    if (!appointment) {
+      return;
+    }
+
+    setRescheduleDate(toDateInputValue(new Date(appointment.start_time)));
+    setRescheduleSlots([]);
+    setSelectedRescheduleSlot(null);
+    setRescheduleError(null);
+    setShowRescheduleModal(true);
+  }, [appointment]);
+
+  const handleReschedule = useCallback(async () => {
+    if (!appointment) {
+      return;
+    }
+
+    if (!selectedRescheduleSlot) {
+      setRescheduleError("Select a new slot before confirming.");
+      return;
+    }
+
+    setIsRescheduling(true);
+    setRescheduleError(null);
+
+    try {
+      const updatedAppointment = await apiFetch<Appointment>(
+        `/api/appointments/${appointment.id}/reschedule`,
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            start_time: selectedRescheduleSlot.start_time,
+            end_time: selectedRescheduleSlot.end_time,
+          }),
+        },
+      );
+
+      setAppointment(updatedAppointment);
+      setShowRescheduleModal(false);
+      addToast("Appointment rescheduled successfully", "success");
+    } catch (rescheduleError) {
+      setRescheduleError(
+        getErrorMessage(rescheduleError, "Unable to reschedule appointment."),
+      );
+    } finally {
+      setIsRescheduling(false);
+    }
+  }, [addToast, appointment, selectedRescheduleSlot]);
+
   /**
    * Handle add to calendar
    */
@@ -801,6 +1132,12 @@ export default function AppointmentDetailPage() {
 
   // Check authorization
   const canCancel = appointment && !isOrganizer && appointment.status !== "CANCELLED";
+  const canReschedule =
+    appointment &&
+    !isOrganizer &&
+    appointment.status !== "CANCELLED" &&
+    Boolean(appointment.resource_id) &&
+    new Date(appointment.end_time) > now;
 
   // Formatted values
   const countdown = useMemo(
@@ -945,10 +1282,19 @@ export default function AppointmentDetailPage() {
           icon={Mail}
           label="Contact Support"
           onClick={() => {
-            window.location.href = `mailto:support@example.com?subject=Appointment ${appointment.id} Inquiry`;
+            window.location.href = `mailto:?subject=Appointment ${appointment.id} Inquiry`;
           }}
           variant="secondary"
         />
+        {canReschedule && (
+          <ActionButton
+            icon={Edit3}
+            label="Reschedule"
+            onClick={handleOpenRescheduleModal}
+            variant="secondary"
+            disabled={isRescheduling}
+          />
+        )}
         {canCancel && (
           <ActionButton
             icon={X}
@@ -1180,6 +1526,25 @@ export default function AppointmentDetailPage() {
         onConfirm={handleCancel}
         onCancel={() => setShowCancelModal(false)}
         isLoading={isCancelling}
+      />
+
+      <RescheduleAppointmentModal
+        isOpen={showRescheduleModal}
+        appointment={appointment}
+        serviceName={serviceName}
+        selectedDate={rescheduleDate}
+        onDateChange={setRescheduleDate}
+        slots={rescheduleSlots}
+        selectedSlot={selectedRescheduleSlot}
+        onSelectSlot={setSelectedRescheduleSlot}
+        onCancel={() => {
+          setShowRescheduleModal(false);
+          setRescheduleError(null);
+        }}
+        onConfirm={handleReschedule}
+        isLoadingSlots={isLoadingRescheduleSlots}
+        isLoading={isRescheduling}
+        error={rescheduleError}
       />
     </div>
   );

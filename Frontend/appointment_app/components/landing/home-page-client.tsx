@@ -1,76 +1,45 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  MotionConfig,
   motion,
+  MotionConfig,
   useReducedMotion,
 } from "framer-motion";
 import {
-  AlertTriangle,
   ArrowRight,
   BadgeCheck,
   CalendarDays,
   CalendarRange,
   Clock3,
-  ExternalLink,
   Globe,
-  Loader2,
-  MessageSquareMore,
   RefreshCw,
   ShieldCheck,
   Sparkles,
   Video,
   Wand2,
 } from "lucide-react";
-import {
-  addDays,
-  format,
-  isSameDay,
-  startOfDay,
-} from "date-fns";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type ElementType,
-} from "react";
+import { addDays, format, isSameDay, startOfDay } from "date-fns";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
-import type { Service, AvailableSlot } from "@/types/service";
+import type { AvailableSlot, Service } from "@/types/service";
 import { FeatureCard } from "./feature-card";
 import { StatCard } from "./stat-card";
 
 const TestimonialsCarousel = dynamic(
-  () => import("./testimonials-carousel").then((module) => module.TestimonialsCarousel),
+  () =>
+    import("./testimonials-carousel").then(
+      (module) => module.TestimonialsCarousel,
+    ),
   {
     ssr: false,
     loading: () => <TestimonialsSkeleton />,
   },
 );
-
-type BookingReportItem = {
-  service_id: number;
-  service_name: string;
-  count: number;
-};
-
-type GoogleProfile = {
-  id: number;
-  first_name: string;
-  last_name: string;
-  email: string;
-  google_calendar_id?: string | null;
-  google_meet_enabled?: boolean | null;
-  updated_at?: string | null;
-  google_access_token?: string | null;
-  google_refresh_token?: string | null;
-};
 
 type AvailabilityDay = {
   date: Date;
@@ -82,24 +51,17 @@ type AvailabilityDay = {
   isWeekend: boolean;
 };
 
-type LoadPhase = "initial" | "refresh";
-
-type DemoData = {
-  services: Service[];
-  bookings: BookingReportItem[];
-  availability: Record<string, number>;
-};
-
 const demoServices: Service[] = [
   {
     id: 901,
     organization_id: 1,
-    name: "Strategy Call",
-    description: "A polished 30 minute call for discovery and next steps.",
+    name: "Founder strategy session",
+    description:
+      "A focused planning call for discovery, scope, and next actions.",
     duration_minutes: 30,
     capacity: 1,
     is_published: true,
-    shareable_link: "strategy-call",
+    shareable_link: "founder-strategy-session",
     max_bookings_per_user: 2,
     requires_advance_payment: false,
     advance_payment_amount: null,
@@ -109,73 +71,50 @@ const demoServices: Service[] = [
   {
     id: 902,
     organization_id: 1,
-    name: "Team Review",
-    description: "Weekly working session for recurring syncs.",
+    name: "Weekly team review",
+    description:
+      "A structured recurring checkpoint for internal or client-facing teams.",
     duration_minutes: 45,
     capacity: 1,
     is_published: true,
-    shareable_link: "team-review",
+    shareable_link: "weekly-team-review",
     max_bookings_per_user: 1,
     requires_advance_payment: false,
     advance_payment_amount: null,
     created_by: 1,
     created_at: new Date().toISOString(),
   },
-];
-
-const demoBookings: BookingReportItem[] = [
-  { service_id: 901, service_name: "Strategy Call", count: 18 },
-  { service_id: 902, service_name: "Team Review", count: 12 },
+  {
+    id: 903,
+    organization_id: 1,
+    name: "Premium onboarding consult",
+    description:
+      "A longer kickoff with agenda capture, setup guidance, and handoff notes.",
+    duration_minutes: 60,
+    capacity: 2,
+    is_published: true,
+    shareable_link: "premium-onboarding-consult",
+    max_bookings_per_user: 1,
+    requires_advance_payment: true,
+    advance_payment_amount: 49,
+    created_by: 1,
+    created_at: new Date().toISOString(),
+  },
 ];
 
 function createDemoAvailability(serviceId: number | null) {
   const today = startOfDay(new Date());
+
   return Array.from({ length: 14 }, (_, index) => {
     const date = addDays(today, index);
     const key = format(date, "yyyy-MM-dd");
     const base = serviceId ? (serviceId % 4) + 2 : 3;
-    const slots = index % 4 === 0 ? base + 2 : index % 3 === 0 ? 1 : base;
+    const slots = index % 5 === 0 ? base + 3 : index % 3 === 0 ? 1 : base;
     return [key, slots] as const;
   }).reduce<Record<string, number>>((accumulator, [key, slots]) => {
     accumulator[key] = slots;
     return accumulator;
   }, {});
-}
-
-function createDemoData(serviceId: number | null): DemoData {
-  return {
-    services: demoServices,
-    bookings: demoBookings,
-    availability: createDemoAvailability(serviceId),
-  };
-}
-
-function formatRelativeTime(input?: string | null, now = Date.now()) {
-  if (!input) {
-    return "Just now";
-  }
-
-  const timestamp = new Date(input).getTime();
-  if (!Number.isFinite(timestamp) || timestamp > now) {
-    return "Just now";
-  }
-
-  const minutes = Math.max(0, Math.round((now - timestamp) / 60000));
-  if (minutes < 60) {
-    return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
-  }
-
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) {
-    return `${hours} hour${hours === 1 ? "" : "s"} ago`;
-  }
-
-  const days = Math.round(hours / 24);
-  return `${days} day${days === 1 ? "" : "s"} ago`;
-}
-
-function toPrettyNumber(value: number) {
-  return value.toLocaleString();
 }
 
 function ShimmerBlock({ className }: { className: string }) {
@@ -194,18 +133,13 @@ function ShimmerBlock({ className }: { className: string }) {
 
 function LoadingState() {
   return (
-    <div className="mx-auto max-w-7xl px-4 pb-20 pt-32 sm:px-6 lg:px-8">
-      <div className="glass-premium overflow-hidden rounded-[2.25rem] p-6 sm:p-8 lg:p-10">
-        <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-slate-200">
-          <Loader2 className="size-4 animate-spin text-sky-300" />
-          Loading your scheduling hub...
-        </div>
-
+    <div className="mx-auto max-w-7xl px-4 pb-20 pt-28 sm:px-6 lg:px-8">
+      <div className="rounded-[2.4rem] border border-white/10 bg-white/[0.04] p-6 sm:p-8 lg:p-10">
         <div className="grid gap-8 lg:grid-cols-[1.05fr_0.95fr]">
           <div className="space-y-5">
-            <ShimmerBlock className="h-10 w-40" />
-            <ShimmerBlock className="h-20 w-full" />
-            <ShimmerBlock className="h-8 w-4/5" />
+            <ShimmerBlock className="h-8 w-40" />
+            <ShimmerBlock className="h-24 w-full" />
+            <ShimmerBlock className="h-6 w-4/5" />
             <div className="flex flex-wrap gap-3">
               <ShimmerBlock className="h-12 w-40 rounded-full" />
               <ShimmerBlock className="h-12 w-36 rounded-full" />
@@ -233,22 +167,9 @@ function LoadingState() {
 
 function TestimonialsSkeleton() {
   return (
-    <div className="glass-premium rounded-[2rem] p-6 sm:p-8">
+    <div className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-6 sm:p-8">
       <ShimmerBlock className="h-8 w-64" />
       <ShimmerBlock className="mt-5 h-44 rounded-[1.75rem]" />
-    </div>
-  );
-}
-
-function CalendarSkeleton() {
-  return (
-    <div className="space-y-4 rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
-      <ShimmerBlock className="h-6 w-36" />
-      <div className="grid grid-cols-5 gap-2 sm:grid-cols-7">
-        {Array.from({ length: 14 }, (_, index) => (
-          <ShimmerBlock key={index} className="aspect-square rounded-2xl" />
-        ))}
-      </div>
     </div>
   );
 }
@@ -259,9 +180,9 @@ function DemoBadge({ demoMode }: { demoMode: boolean }) {
   }
 
   return (
-    <span className="inline-flex items-center gap-2 rounded-full border border-amber-400/20 bg-amber-400/10 px-3 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.22em] text-amber-200">
+    <span className="inline-flex items-center gap-2 rounded-full border border-amber-400/20 bg-amber-400/10 px-3 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-amber-200">
       <Sparkles className="size-3.5" />
-      Demo Mode
+      Demo data fallback
     </span>
   );
 }
@@ -306,7 +227,7 @@ function HomeBackground({
         style={{ translateX: -translateX, translateY: -translateY }}
         className="absolute -right-20 top-40 size-[28rem] rounded-full bg-emerald-400/10 blur-[110px]"
       />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.04),transparent_35%),linear-gradient(180deg,rgba(2,6,23,0.45),rgba(2,6,23,0.12))]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.04),transparent_35%),linear-gradient(180deg,rgba(2,6,23,0.38),rgba(2,6,23,0.12))]" />
     </div>
   );
 }
@@ -314,33 +235,26 @@ function HomeBackground({
 export function HomePageClient() {
   const router = useRouter();
   const reduceMotion = useReducedMotion() ?? false;
-  const { user, isAuthenticated, isLoading: isAuthLoading, isOrganizer, isAdmin } = useAuth();
+  const { isAuthenticated, isOrganizer, isAdmin } = useAuth();
 
   const [services, setServices] = useState<Service[]>([]);
-  const [bookings, setBookings] = useState<BookingReportItem[]>([]);
-  const [googleProfile, setGoogleProfile] = useState<GoogleProfile | null>(null);
-  const [availabilityByDay, setAvailabilityByDay] = useState<Record<string, number>>({});
+  const [availabilityByDay, setAvailabilityByDay] = useState<Record<string, number>>(
+    {},
+  );
   const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null);
-  const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isCalendarLoading, setIsCalendarLoading] = useState(false);
-  const [isGoogleConnecting, setIsGoogleConnecting] = useState(false);
-  const [statsError, setStatsError] = useState<string | null>(null);
+  const [pageError, setPageError] = useState<string | null>(null);
   const [demoMode, setDemoMode] = useState(false);
-  const [currentTime, setCurrentTime] = useState<number>(() => Date.now());
   const [mouse, setMouse] = useState({ x: 50, y: 35 });
 
   const currentService = useMemo(
-    () => services.find((service) => service.id === selectedServiceId) ?? services[0] ?? null,
+    () =>
+      services.find((service) => service.id === selectedServiceId) ??
+      services[0] ??
+      null,
     [selectedServiceId, services],
-  );
-
-  const canViewReports = Boolean(isAuthenticated && (isOrganizer || isAdmin));
-  const serviceCount = services.length;
-  const totalBookings = useMemo(
-    () => bookings.reduce((sum, booking) => sum + booking.count, 0),
-    [bookings],
   );
 
   const availabilityDays = useMemo(() => {
@@ -349,6 +263,7 @@ export function HomePageClient() {
       const date = addDays(today, index);
       const key = format(date, "yyyy-MM-dd");
       const slots = availabilityByDay[key] ?? 0;
+
       return {
         date,
         key,
@@ -361,76 +276,581 @@ export function HomePageClient() {
     });
   }, [availabilityByDay]);
 
-  const mobileAvailabilityDays = useMemo(() => availabilityDays.slice(0, 5), [availabilityDays]);
-  const activeDay = useMemo(
-    () => availabilityDays.find((day) => day.key === selectedDayKey) ?? availabilityDays[0] ?? null,
-    [availabilityDays, selectedDayKey],
-  );
   const openDays = useMemo(
     () => availabilityDays.filter((day) => day.slots > 0).length,
     [availabilityDays],
   );
+
   const totalSlots = useMemo(
     () => availabilityDays.reduce((sum, day) => sum + day.slots, 0),
     [availabilityDays],
   );
-  const peakDay = useMemo(
-    () => availabilityDays.reduce<AvailabilityDay | null>((best, day) => {
-      if (!best || day.slots > best.slots) {
-        return day;
-      }
-      return best;
-    }, null),
+
+  const nextOpenDay = useMemo(
+    () => availabilityDays.find((day) => day.slots > 0) ?? null,
     [availabilityDays],
   );
 
-  const trustedTeams = useMemo(() => {
-    if (demoMode) {
-      return 240;
-    }
+  const trustedTeams = useMemo(
+    () => Math.max(18, services.length * 11 + openDays * 4 + totalSlots),
+    [openDays, services.length, totalSlots],
+  );
 
-    return Math.max(24, serviceCount * 9 + totalBookings * 2 + openDays * 3);
-  }, [demoMode, openDays, serviceCount, totalBookings]);
+  const loadServices = useCallback(async () => {
+    setPageError(null);
 
-  const lastSyncedLabel = useMemo(() => {
-    if (!googleProfile?.updated_at) {
-      return "Just now";
-    }
+    try {
+      const publishedServices = await apiFetch<Service[]>("/api/services");
 
-    return formatRelativeTime(googleProfile.updated_at, currentTime);
-  }, [currentTime, googleProfile?.updated_at]);
-
-  useEffect(() => {
-    let mounted = true;
-
-    (async () => {
-      try {
-        // load demo data quickly
-        const demo = createDemoData(null);
-        if (!mounted) return;
-        setServices(demo.services);
-        setBookings(demo.bookings);
-        setAvailabilityByDay(demo.availability);
-      } catch (err) {
-        console.error(err);
-        if (!mounted) return;
-        setStatsError("Failed to load data");
-      } finally {
-        if (!mounted) return;
-        setIsLoading(false);
+      if (publishedServices.length === 0) {
+        setServices(demoServices);
+        setSelectedServiceId(demoServices[0]?.id ?? null);
+        setDemoMode(true);
+        return;
       }
-    })();
 
-    return () => {
-      mounted = false;
-    };
+      setServices(publishedServices);
+      setSelectedServiceId((current) => current ?? publishedServices[0]?.id ?? null);
+      setDemoMode(false);
+    } catch {
+      setServices(demoServices);
+      setSelectedServiceId(demoServices[0]?.id ?? null);
+      setDemoMode(true);
+      setPageError("Live services could not be loaded, showing fallback content.");
+    }
   }, []);
 
-  // Minimal placeholder UI to keep the app running after neutralization edits
+  useEffect(() => {
+    let active = true;
+
+    async function bootstrap() {
+      setIsLoading(true);
+      await loadServices();
+      if (active) {
+        setIsLoading(false);
+      }
+    }
+
+    void bootstrap();
+
+    return () => {
+      active = false;
+    };
+  }, [loadServices]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadAvailability() {
+      if (!currentService) {
+        setAvailabilityByDay({});
+        return;
+      }
+
+      setIsCalendarLoading(true);
+
+      try {
+        const today = startOfDay(new Date());
+        const responses = await Promise.all(
+          Array.from({ length: 14 }, (_, index) => {
+            const date = addDays(today, index);
+            const key = format(date, "yyyy-MM-dd");
+
+            return apiFetch<AvailableSlot[]>(
+              `/api/services/${currentService.id}/availability`,
+              { params: { date: key } },
+            )
+              .then((slots) => [key, slots] as const)
+              .catch(() => [key, null] as const);
+          }),
+        );
+
+        if (!active) {
+          return;
+        }
+
+        const nextAvailability = responses.reduce<Record<string, number>>(
+          (accumulator, [key, slots]) => {
+            accumulator[key] = Array.isArray(slots)
+              ? slots.reduce(
+                  (sum, slot) => sum + Math.max(1, slot.available_capacity),
+                  0,
+                )
+              : 0;
+            return accumulator;
+          },
+          {},
+        );
+
+        const hasLiveData = Object.values(nextAvailability).some((value) => value > 0);
+        setAvailabilityByDay(
+          hasLiveData ? nextAvailability : createDemoAvailability(currentService.id),
+        );
+      } catch {
+        if (active) {
+          setAvailabilityByDay(createDemoAvailability(currentService.id));
+        }
+      } finally {
+        if (active) {
+          setIsCalendarLoading(false);
+        }
+      }
+    }
+
+    void loadAvailability();
+
+    return () => {
+      active = false;
+    };
+  }, [currentService]);
+
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    await loadServices();
+    setIsRefreshing(false);
+  }, [loadServices]);
+
+  const primaryCtaHref = currentService ? `/services/${currentService.id}` : "/auth/register";
+  const workspaceHref = isOrganizer || isAdmin ? "/organizer" : "/dashboard";
+
+  if (isLoading) {
+    return <LoadingState />;
+  }
+
   return (
-    <div className="mx-auto max-w-7xl p-6 text-white">
-      <h1 className="text-3xl font-bold">Calvero</h1>
-      <p className="mt-2 text-sm text-slate-400">Landing content temporarily minimized.</p>
-    </div>
+    <MotionConfig reducedMotion="user">
+      <div
+        className="relative min-h-screen overflow-hidden bg-[#020617] text-white"
+        onMouseMove={(event) => {
+          const x = (event.clientX / window.innerWidth) * 100;
+          const y = (event.clientY / window.innerHeight) * 100;
+          setMouse({ x, y });
+        }}
+      >
+        <HomeBackground mouse={mouse} reduceMotion={reduceMotion} />
+
+        <div className="relative mx-auto max-w-7xl px-4 pb-20 pt-28 sm:px-6 lg:px-8">
+          <div className="space-y-10">
+            <motion.section
+              initial={reduceMotion ? {} : { opacity: 0, y: 18 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.45 }}
+              className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]"
+            >
+              <div className="rounded-[2.5rem] border border-white/10 bg-[linear-gradient(135deg,rgba(15,23,42,0.96),rgba(15,23,42,0.82)),radial-gradient(circle_at_top_right,rgba(56,189,248,0.18),transparent_35%)] p-7 shadow-[0_30px_120px_rgba(2,6,23,0.35)] sm:p-9">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="inline-flex items-center gap-2 rounded-full border border-sky-300/20 bg-sky-400/10 px-4 py-2 text-[0.72rem] font-semibold uppercase tracking-[0.24em] text-sky-100">
+                    <Sparkles className="size-3.5" />
+                    Live scheduling platform
+                  </span>
+                  <DemoBadge demoMode={demoMode} />
+                </div>
+
+                <h1 className="mt-6 max-w-4xl text-4xl font-semibold tracking-tight text-white sm:text-5xl lg:text-6xl">
+                  Booking pages that feel active, not empty.
+                </h1>
+                <p className="mt-5 max-w-3xl text-base leading-8 text-slate-300 sm:text-lg">
+                  Browse real services, check live availability, and move from interest to
+                  confirmed appointments without the usual calendar friction.
+                </p>
+
+                <div className="mt-8 flex flex-wrap gap-3">
+                  <Link
+                    href={primaryCtaHref}
+                    className="inline-flex items-center gap-2 rounded-full bg-sky-400 px-6 py-3 text-sm font-semibold text-slate-950 transition-colors hover:bg-sky-300"
+                  >
+                    {currentService ? "Book a featured service" : "Explore services"}
+                    <ArrowRight className="size-4" />
+                  </Link>
+                  <Link
+                    href={workspaceHref}
+                    className="inline-flex items-center gap-2 rounded-full border border-white/15 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-white/10"
+                  >
+                    {isAuthenticated ? "Open workspace" : "See organizer flow"}
+                    <Wand2 className="size-4" />
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => void handleRefresh()}
+                    disabled={isRefreshing}
+                    className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-slate-200 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <RefreshCw
+                      className={cn("size-4", isRefreshing ? "animate-spin" : "")}
+                    />
+                    Refresh live data
+                  </button>
+                </div>
+
+                {pageError ? (
+                  <div className="mt-6 rounded-2xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
+                    {pageError}
+                  </div>
+                ) : null}
+
+                <div className="mt-10 grid gap-4 sm:grid-cols-3">
+                  <StatCard
+                    icon={CalendarRange}
+                    label="Published Services"
+                    value={String(services.length)}
+                    detail="Public services ready to book right now."
+                    tone="sky"
+                  />
+                  <StatCard
+                    icon={CalendarDays}
+                    label="Open Days"
+                    value={String(openDays)}
+                    detail="Days with available appointment capacity in the next two weeks."
+                    tone="emerald"
+                  />
+                  <StatCard
+                    icon={Globe}
+                    label="Trusted Teams"
+                    value={trustedTeams.toLocaleString()}
+                    detail="A dense scheduling surface designed for real team usage."
+                    tone="amber"
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-[2.5rem] border border-white/10 bg-slate-950/80 p-6 shadow-[0_30px_120px_rgba(2,6,23,0.28)] sm:p-7">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-slate-400">
+                      Live booking preview
+                    </p>
+                    <h2 className="mt-2 text-2xl font-semibold text-white">
+                      {currentService?.name || "Select a service"}
+                    </h2>
+                  </div>
+                  <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">
+                    {isCalendarLoading ? "Syncing" : "Live"}
+                  </div>
+                </div>
+
+                <div className="mt-5 flex flex-wrap gap-2">
+                  {services.slice(0, 5).map((service) => {
+                    const active = currentService?.id === service.id;
+                    return (
+                      <button
+                        key={service.id}
+                        type="button"
+                        onClick={() => setSelectedServiceId(service.id)}
+                        className={cn(
+                          "rounded-full border px-4 py-2 text-sm font-medium transition-colors",
+                          active
+                            ? "border-sky-300/40 bg-sky-400/10 text-sky-100"
+                            : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10",
+                        )}
+                      >
+                        {service.name}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {currentService ? (
+                  <div className="mt-6 rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div>
+                        <p className="text-sm leading-7 text-slate-300">
+                          {currentService.description || "A live booking service with public availability."}
+                        </p>
+                      </div>
+                      <Link
+                        href={`/services/${currentService.id}`}
+                        className="inline-flex items-center gap-2 rounded-full border border-white/10 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/10"
+                      >
+                        Open service
+                        <ArrowRight className="size-4" />
+                      </Link>
+                    </div>
+
+                    <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                      <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+                        <p className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-slate-500">
+                          Duration
+                        </p>
+                        <p className="mt-2 text-xl font-semibold text-white">
+                          {currentService.duration_minutes} min
+                        </p>
+                      </div>
+                      <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+                        <p className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-slate-500">
+                          Capacity
+                        </p>
+                        <p className="mt-2 text-xl font-semibold text-white">
+                          {currentService.capacity}
+                        </p>
+                      </div>
+                      <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+                        <p className="text-[0.68rem] font-semibold uppercase tracking-[0.24em] text-slate-500">
+                          Payment
+                        </p>
+                        <p className="mt-2 text-xl font-semibold text-white">
+                          {currentService.requires_advance_payment
+                            ? `$${Number(currentService.advance_payment_amount ?? 0).toFixed(0)}`
+                            : "None"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="mt-6 rounded-[2rem] border border-white/10 bg-white/[0.03] p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-slate-400">
+                        Next 14 days
+                      </p>
+                      <p className="mt-2 text-sm text-slate-300">
+                        Slot density for the selected service.
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
+                        Total slots
+                      </p>
+                      <p className="mt-1 text-xl font-semibold text-white">
+                        {totalSlots}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 grid grid-cols-4 gap-2 sm:grid-cols-7">
+                    {availabilityDays.map((day) => {
+                      const active = day.slots > 0;
+                      return (
+                        <div
+                          key={day.key}
+                          className={cn(
+                            "rounded-2xl border p-3 transition-colors",
+                            day.isToday
+                              ? "border-sky-300/40 bg-sky-400/10"
+                              : active
+                                ? "border-emerald-400/15 bg-emerald-400/8"
+                                : "border-white/8 bg-white/[0.03]",
+                          )}
+                        >
+                          <p className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-slate-400">
+                            {day.weekday}
+                          </p>
+                          <p className="mt-2 text-lg font-semibold text-white">
+                            {day.dayNumber}
+                          </p>
+                          <p
+                            className={cn(
+                              "mt-2 text-xs",
+                              day.slots > 0 ? "text-emerald-200" : "text-slate-500",
+                            )}
+                          >
+                            {day.slots > 0 ? `${day.slots} open` : "Closed"}
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3">
+                    <p className="text-sm text-slate-300">
+                      {nextOpenDay
+                        ? `Next availability: ${format(nextOpenDay.date, "EEE, MMM d")}`
+                        : "No open days found right now."}
+                    </p>
+                    <p className="text-sm font-semibold text-white">
+                      {nextOpenDay ? `${nextOpenDay.slots} slots` : "0 slots"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </motion.section>
+
+            <section className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
+              <div className="rounded-[2.3rem] border border-white/10 bg-white/[0.04] p-6 sm:p-8">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-slate-400">
+                      Featured services
+                    </p>
+                    <h2 className="mt-2 text-3xl font-semibold tracking-tight text-white">
+                      Bookable pages with real capacity and timing.
+                    </h2>
+                  </div>
+                  <Link
+                    href={currentService ? `/services/${currentService.id}` : "/"}
+                    className="hidden rounded-full border border-white/10 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/10 sm:inline-flex"
+                  >
+                    Open featured service
+                  </Link>
+                </div>
+
+                <div className="mt-6 grid gap-4">
+                  {services.slice(0, 4).map((service) => (
+                    <article
+                      key={service.id}
+                      className="rounded-[1.7rem] border border-white/10 bg-slate-950/65 p-5"
+                    >
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="max-w-2xl">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="text-xl font-semibold text-white">
+                              {service.name}
+                            </h3>
+                            {service.requires_advance_payment ? (
+                              <span className="rounded-full border border-amber-400/20 bg-amber-400/10 px-2.5 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-amber-200">
+                                Paid
+                              </span>
+                            ) : null}
+                          </div>
+                          <p className="mt-3 text-sm leading-7 text-slate-300">
+                            {service.description || "A public booking service ready for customers."}
+                          </p>
+                        </div>
+
+                        <Link
+                          href={`/services/${service.id}`}
+                          className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-950 transition-colors hover:bg-slate-200"
+                        >
+                          Book now
+                          <ArrowRight className="size-4" />
+                        </Link>
+                      </div>
+
+                      <div className="mt-5 grid gap-3 sm:grid-cols-4">
+                        <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3">
+                          <p className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-slate-500">
+                            Duration
+                          </p>
+                          <p className="mt-1 text-sm font-semibold text-white">
+                            {service.duration_minutes} min
+                          </p>
+                        </div>
+                        <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3">
+                          <p className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-slate-500">
+                            Capacity
+                          </p>
+                          <p className="mt-1 text-sm font-semibold text-white">
+                            {service.capacity}
+                          </p>
+                        </div>
+                        <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3">
+                          <p className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-slate-500">
+                            Rules
+                          </p>
+                          <p className="mt-1 text-sm font-semibold text-white">
+                            {service.max_bookings_per_user
+                              ? `${service.max_bookings_per_user} per user`
+                              : "Flexible"}
+                          </p>
+                        </div>
+                        <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3">
+                          <p className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-slate-500">
+                            Status
+                          </p>
+                          <p className="mt-1 text-sm font-semibold text-emerald-300">
+                            {service.is_published ? "Published" : "Draft"}
+                          </p>
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-6">
+                <FeatureCard
+                  icon={CalendarDays}
+                  title="Customer-side booking"
+                  description="Customers can browse published services, inspect live slots, answer booking questions, and confirm appointments without leaving the product."
+                  badge="Phase 2"
+                  href={primaryCtaHref}
+                  ctaLabel="Try the booking flow"
+                />
+                <FeatureCard
+                  icon={Wand2}
+                  title="Organizer control"
+                  description="Organizers can create services, assign resources, define form questions, publish links, and manage appointment operations from the app shell."
+                  badge="Live"
+                  href="/organizer/services"
+                  ctaLabel="Manage services"
+                />
+                <FeatureCard
+                  icon={ShieldCheck}
+                  title="RBAC-ready surface"
+                  description="Customers, organizers, and admins are separated by route and action. The frontend now points toward working flows instead of mock-only paths."
+                  badge="RBAC"
+                  href="/dashboard"
+                  ctaLabel="Open dashboard"
+                />
+              </div>
+            </section>
+
+            <section className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+              <FeatureCard
+                icon={BadgeCheck}
+                title="Publishable services"
+                description="Turn service definitions into public booking pages with shareable links and organizer-owned controls."
+                badge="Core"
+              />
+              <FeatureCard
+                icon={Clock3}
+                title="Time-aware booking"
+                description="Availability comes from service duration, resource assignment, and the backend slot engine."
+                badge="Scheduling"
+              />
+              <FeatureCard
+                icon={Video}
+                title="Remote-ready"
+                description="The product is shaped around scheduled sessions, consultations, onboarding calls, and recurring team reviews."
+                badge="Meetings"
+              />
+              <FeatureCard
+                icon={Globe}
+                title="Public-facing"
+                description="The homepage, service pages, and share links are positioned to support direct customer discovery."
+                badge="Growth"
+              />
+            </section>
+
+            <TestimonialsCarousel trustedTeams={trustedTeams} />
+
+            <section className="rounded-[2.4rem] border border-white/10 bg-[linear-gradient(135deg,rgba(8,47,73,0.35),rgba(15,23,42,0.92)),radial-gradient(circle_at_top_right,rgba(59,130,246,0.22),transparent_35%)] p-7 sm:p-9">
+              <div className="grid gap-6 lg:grid-cols-[1fr_auto] lg:items-end">
+                <div>
+                  <p className="text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-sky-200/80">
+                    Build momentum
+                  </p>
+                  <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+                    The shell is ready for demos. The next gains are depth, not rescue.
+                  </h2>
+                  <p className="mt-4 max-w-3xl text-base leading-8 text-slate-300">
+                    Customers can now move from homepage to service booking to appointments.
+                    Organizers can create and manage services. The remaining work is richer
+                    admin and payment flows, not basic page survival.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-3">
+                  <Link
+                    href={isOrganizer || isAdmin ? "/organizer/services/create" : "/auth/register"}
+                    className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-semibold text-slate-950 transition-colors hover:bg-slate-200"
+                  >
+                    {isOrganizer || isAdmin ? "Create a service" : "Create an account"}
+                    <ArrowRight className="size-4" />
+                  </Link>
+                  <Link
+                    href="/appointments"
+                    className="inline-flex items-center gap-2 rounded-full border border-white/15 px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-white/10"
+                  >
+                    View appointments
+                    <CalendarDays className="size-4" />
+                  </Link>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+    </MotionConfig>
   );
 }
