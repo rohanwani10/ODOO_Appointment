@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone, time as time_type
 from typing import Optional, List, Any, Literal
-from sqlalchemy import func
+from sqlalchemy import func, text
 import os
 from pathlib import Path
 from uuid import uuid4
@@ -25,6 +25,7 @@ from models import (
 )
 from email_service import email_service
 from google_oauth_routes import router as google_oauth_router
+from schema_manager import sync_schema
 from auth import (
     create_access_token,
     create_refresh_token,
@@ -499,16 +500,27 @@ app.include_router(google_oauth_router)
 
 # ==================== Startup & Teardown ====================
 
+def validate_runtime_configuration() -> None:
+    """Reject broken partial configuration and warn when optional integrations are disabled."""
+    if settings.SECRET_KEY.startswith("your-secret-key-change-this") and not settings.DEBUG:
+        raise RuntimeError("SECRET_KEY must be overridden when DEBUG is disabled")
+
+    if bool(settings.SMTP_USERNAME) != bool(settings.SMTP_PASSWORD):
+        raise RuntimeError("SMTP_USERNAME and SMTP_PASSWORD must be configured together")
+
+    if bool(settings.GOOGLE_CLIENT_ID) != bool(settings.GOOGLE_CLIENT_SECRET):
+        raise RuntimeError("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be configured together")
+
+    if not email_service.is_configured():
+        logger.warning("SMTP is not configured; OTP and password-reset email delivery are disabled")
+
+    if not settings.GOOGLE_CLIENT_ID:
+        logger.warning("Google OAuth is not configured; Google auth/calendar features are disabled")
+
 @app.on_event("startup")
 def startup():
-    Base.metadata.create_all(bind=engine)
-    if engine.dialect.name == "postgresql":
-        from migrate_add_user_columns import migrate as migrate_user_columns
-        from migrate_google_oauth_columns import migrate_add_google_oauth_columns
-
-        if not migrate_user_columns():
-            raise RuntimeError("Failed to run required user-table migrations during startup")
-        migrate_add_google_oauth_columns()
+    validate_runtime_configuration()
+    sync_schema(engine)
 
     logger.info("Database tables checked successfully")
 
@@ -728,6 +740,32 @@ def ensure_service_resource_assignment(service_id: int, resource_id: int, db: Se
     return assignment
 
 
+def acquire_booking_capacity_locks(service_id: int, resource_id: int, db: Session) -> None:
+    """Serialize booking writes for the relevant service/resource pair across workers and DBs."""
+    updated_at = datetime.now(timezone.utc)
+    for lock_key in sorted({f"resource:{resource_id}", f"service:{service_id}"}):
+        db.execute(
+            text(
+                """
+                INSERT INTO booking_locks (lock_key, updated_at)
+                VALUES (:lock_key, :updated_at)
+                ON CONFLICT(lock_key) DO NOTHING
+                """
+            ),
+            {"lock_key": lock_key, "updated_at": updated_at},
+        )
+        db.execute(
+            text(
+                """
+                UPDATE booking_locks
+                SET updated_at = :updated_at
+                WHERE lock_key = :lock_key
+                """
+            ),
+            {"lock_key": lock_key, "updated_at": updated_at},
+        )
+
+
 def validate_appointment_slot(
     *,
     service: Service,
@@ -753,6 +791,7 @@ def validate_appointment_slot(
         )
 
     ensure_service_resource_assignment(service.id, resource.id, db)
+    acquire_booking_capacity_locks(service.id, resource.id, db)
 
     duration_minutes = int((end_time - start_time).total_seconds() / 60)
     if duration_minutes != service.duration_minutes:
@@ -2584,9 +2623,28 @@ def update_appointment_status(appointment_id: int, request: UpdateStatusRequest,
     roles = get_user_roles(current_user.id, db)
     if not service or (service.created_by != current_user.id and "ADMIN" not in roles):  # type: ignore[operator]
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+
+    if appt.status == "CANCELLED" and request.status != "CANCELLED":
+        if not appt.resource_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cancelled appointment cannot be restored without a resource")
+        resource = get_resource_or_404(appt.resource_id, db, require_active=True)
+        validate_appointment_slot(
+            service=get_service_or_404(appt.service_id, db),
+            resource=resource,
+            start_time=normalize_datetime_to_utc(appt.start_time),
+            end_time=normalize_datetime_to_utc(appt.end_time),
+            capacity_used=appt.capacity_used,
+            customer_id=appt.customer_id,
+            exclude_appointment_id=appt.id,
+            db=db,
+        )
+
     appt.status = request.status  # type: ignore[assignment]
     if request.status == "CANCELLED":
         appt.cancelled_at = datetime.now(timezone.utc)  # type: ignore[assignment]
+    else:
+        appt.cancelled_at = None  # type: ignore[assignment]
+        appt.cancellation_reason = None  # type: ignore[assignment]
     appt.updated_at = datetime.now(timezone.utc)  # type: ignore[assignment]
     db.commit()
     return {"message": f"Appointment status updated to {request.status}"}
