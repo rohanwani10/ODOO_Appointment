@@ -6,9 +6,28 @@ import { useAuth } from "@/hooks/useAuth";
 import { apiFetch } from "@/lib/api";
 import { formatDate, formatTime } from "@/lib/dates";
 import { getErrorMessage } from "@/lib/errors";
+import { cn } from "@/lib/utils";
+import { motion, AnimatePresence } from "framer-motion";
+import { 
+  Calendar, 
+  Clock, 
+  User, 
+  ChevronRight, 
+  XCircle, 
+  Search,
+  LayoutGrid,
+  Filter
+} from "lucide-react";
 import type { Appointment } from "@/types/booking";
 import type { Resource } from "@/types/resource";
 import type { Service } from "@/types/service";
+
+const statusColors: Record<string, string> = {
+  CONFIRMED: "text-emerald-400 bg-emerald-400/10 border-emerald-400/20",
+  PENDING: "text-amber-400 bg-amber-400/10 border-amber-400/20",
+  CANCELLED: "text-rose-400 bg-rose-400/10 border-rose-400/20",
+  COMPLETED: "text-indigo-400 bg-indigo-400/10 border-indigo-400/20",
+};
 
 export default function AppointmentsPage() {
   const { isOrganizer } = useAuth();
@@ -40,196 +59,181 @@ export default function AppointmentsPage() {
         isOrganizer ? apiFetch<Resource[]>("/api/resources") : Promise.resolve([]),
       ]);
 
-      const serviceMap = serviceRecords.reduce<Record<number, Service>>((accumulator, service) => {
-        if (service) {
-          accumulator[service.id] = service;
-        }
-        return accumulator;
+      const serviceMap = serviceRecords.reduce<Record<number, Service>>((acc, s) => {
+        if (s) acc[s.id] = s;
+        return acc;
       }, {});
 
-      const resourceMap = resourceRecords.reduce<Record<number, Resource>>((accumulator, resource) => {
-        accumulator[resource.id] = resource;
-        return accumulator;
+      const resourceMap = resourceRecords.reduce<Record<number, Resource>>((acc, r) => {
+        acc[r.id] = r;
+        return acc;
       }, {});
 
       setAppointments(appointmentData);
       setServicesById(serviceMap);
       setResourcesById(resourceMap);
-    } catch (loadError) {
-      setError(getErrorMessage(loadError, "Unable to load appointments."));
+    } catch (err) {
+      setError(getErrorMessage(err, "Unable to load appointments."));
     } finally {
       setIsLoading(false);
     }
   }, [isOrganizer]);
 
   useEffect(() => {
-    void loadAppointments();
+    loadAppointments();
   }, [loadAppointments]);
 
   const sortedAppointments = useMemo(
-    () =>
-      [...appointments].sort(
-        (left, right) =>
-          new Date(left.start_time).getTime() - new Date(right.start_time).getTime(),
-      ),
-    [appointments],
+    () => [...appointments].sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime()),
+    [appointments]
   );
 
   async function handleCancel(appointmentId: number) {
+    if (!confirm("Are you sure you want to cancel this appointment?")) return;
     setCancellingId(appointmentId);
-    setError(null);
-
     try {
-      await apiFetch(`/api/appointments/${appointmentId}`, {
-        method: "DELETE",
-      });
+      await apiFetch(`/api/appointments/${appointmentId}`, { method: "DELETE" });
       await loadAppointments();
-    } catch (cancelError) {
-      setError(getErrorMessage(cancelError, "Unable to cancel appointment."));
+    } catch (err) {
+      setError(getErrorMessage(err, "Unable to cancel appointment."));
     } finally {
       setCancellingId(null);
     }
   }
 
   return (
-    <div className="space-y-8">
-      <section className="rounded-3xl border border-white/10 bg-white/5 p-8 shadow-2xl shadow-slate-950/20 backdrop-blur">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.25em] text-sky-300/80">
-              Phase 2
-            </p>
-            <h1 className="mt-2 text-4xl font-semibold tracking-tight text-white">
-              {isOrganizer ? "Bookings on your services" : "Your appointments"}
+    <div className="space-y-10">
+      {/* Page Header */}
+      <motion.section 
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="glass-premium rounded-[40px] p-10"
+      >
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-primary font-bold uppercase tracking-widest text-[10px]">
+              <LayoutGrid className="size-3" />
+              Scheduling Suite
+            </div>
+            <h1 className="text-gradient text-4xl font-bold tracking-tight">
+              {isOrganizer ? "Booking Stream" : "Your Appointments"}
             </h1>
-            <p className="mt-3 max-w-2xl text-slate-300">
-              {isOrganizer
-                ? "Track what customers are creating against your services."
-                : "Review every appointment you have created and open a detailed overview for each one."}
+            <p className="text-slate-400 max-w-xl">
+              {isOrganizer 
+                ? "Live view of all incoming customer requests and active service sessions."
+                : "A centralized history of all your past and upcoming scheduled events."}
             </p>
           </div>
-
-          <div className="flex flex-wrap gap-3">
-            <Link
-              href="/"
-              className="rounded-full border border-white/15 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/10"
-            >
-              Browse services
-            </Link>
-            {isOrganizer && (
-              <Link
-                href="/organizer"
-                className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-950 transition-colors hover:bg-slate-200"
-              >
-                Organizer workspace
-              </Link>
-            )}
+          
+          <div className="flex items-center gap-3">
+             <div className="glass flex items-center gap-3 rounded-2xl px-4 py-2 border-white/5">
+                <Search className="size-4 text-slate-500" />
+                <input className="bg-transparent outline-none text-sm text-white placeholder:text-slate-600 w-32 focus:w-48 transition-all" placeholder="Filter..." />
+             </div>
+             <button className="glass size-10 flex items-center justify-center rounded-2xl border-white/5 text-slate-400 hover:text-white transition-colors">
+                <Filter className="size-4" />
+             </button>
           </div>
         </div>
-      </section>
+      </motion.section>
 
       {error && (
-        <div className="rounded-2xl border border-red-400/20 bg-red-500/10 p-4 text-sm text-red-100">
+        <div className="rounded-3xl border border-rose-500/20 bg-rose-500/10 p-6 text-sm font-medium text-rose-200">
           {error}
         </div>
       )}
 
       {isLoading ? (
-        <div className="rounded-3xl border border-white/10 bg-slate-950/70 p-8 text-slate-300">
-          Loading appointments...
+        <div className="flex h-64 items-center justify-center">
+          <motion.div 
+            animate={{ rotate: 360 }}
+            transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+            className="size-10 rounded-full border-t-2 border-primary" 
+          />
         </div>
       ) : sortedAppointments.length === 0 ? (
-        <div className="rounded-3xl border border-dashed border-white/15 bg-slate-950/60 p-8 text-slate-300">
-          <p className="text-lg font-semibold text-white">
-            {isOrganizer ? "No bookings yet." : "No appointments yet."}
-          </p>
-          <p className="mt-2">
-            {isOrganizer
-              ? "Publish a service and add working hours to your resources to start receiving bookings."
-              : "Published services from the home page will appear here after you book them."}
-          </p>
-        </div>
+        <motion.div 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="glass rounded-[40px] p-20 text-center"
+        >
+          <div className="mx-auto mb-6 flex size-20 items-center justify-center rounded-[32px] bg-white/5 text-slate-600">
+            <Calendar className="size-10" />
+          </div>
+          <h2 className="text-2xl font-bold text-white">No entries found</h2>
+          <p className="mt-2 text-slate-400">Start by browsing services to create your first booking.</p>
+          <Link href="/" className="mt-8 inline-flex items-center gap-2 rounded-2xl bg-white px-8 py-3 text-sm font-bold text-slate-950 transition-all hover:scale-105">
+            Browse Catalog
+          </Link>
+        </motion.div>
       ) : (
-        <div className="grid gap-5">
-          {sortedAppointments.map((appointment) => {
-            const service = servicesById[appointment.service_id];
-            const resource = appointment.resource_id
-              ? resourcesById[appointment.resource_id]
-              : null;
-
-            return (
-              <article
-                key={appointment.id}
-                className="rounded-3xl border border-white/10 bg-slate-950/70 p-6"
+        <div className="grid gap-4">
+          <AnimatePresence mode="popLayout">
+            {sortedAppointments.map((apt, i) => (
+              <motion.article
+                layout
+                key={apt.id}
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                transition={{ delay: i * 0.05 }}
+                className="group glass relative overflow-hidden rounded-[32px] p-6 transition-all hover:bg-white/[0.08] hover:shadow-2xl"
               >
-                <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-                  <div className="space-y-4">
+                <div className="flex flex-col gap-6 lg:flex-row lg:items-center">
+                  {/* Status & Service Icon */}
+                  <div className="flex items-center gap-6">
+                    <div className="flex size-16 shrink-0 items-center justify-center rounded-3xl bg-white/5 text-white">
+                      <Calendar className="size-7" />
+                    </div>
                     <div>
-                      <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
-                        Appointment #{appointment.id}
-                      </p>
-                      <h2 className="mt-2 text-2xl font-semibold text-white">
-                        {service?.name || `Service #${appointment.service_id}`}
-                      </h2>
-                    </div>
-
-                    <div className="grid gap-3 sm:grid-cols-3">
-                      <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                        <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
-                          Date
-                        </p>
-                        <p className="mt-2 text-sm font-semibold text-white">
-                          {formatDate(appointment.start_time)}
-                        </p>
+                      <div className="flex items-center gap-3 mb-1">
+                        <h3 className="text-xl font-bold text-white group-hover:text-primary transition-colors">
+                          {servicesById[apt.service_id]?.name || "Unknown Service"}
+                        </h3>
+                        <span className={cn("rounded-full border px-3 py-0.5 text-[10px] font-bold tracking-widest uppercase", statusColors[apt.status] || "text-slate-400 bg-white/5 border-white/10")}>
+                          {apt.status}
+                        </span>
                       </div>
-                      <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                        <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
-                          Time
-                        </p>
-                        <p className="mt-2 text-sm font-semibold text-white">
-                          {formatTime(appointment.start_time)} to {formatTime(appointment.end_time)}
-                        </p>
+                      <div className="flex flex-wrap items-center gap-4 text-sm text-slate-500">
+                        <div className="flex items-center gap-2">
+                          <Calendar className="size-3.5" />
+                          {formatDate(apt.start_time)}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Clock className="size-3.5" />
+                          {formatTime(apt.start_time)} - {formatTime(apt.end_time)}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <User className="size-3.5" />
+                          {resourcesById[apt.resource_id]?.name || "Auto-assign"}
+                        </div>
                       </div>
-                      <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                        <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
-                          Status
-                        </p>
-                        <p className="mt-2 text-sm font-semibold text-white">
-                          {appointment.status}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="text-sm text-slate-300">
-                      <p>
-                        Resource: {resource?.name || (appointment.resource_id ? `#${appointment.resource_id}` : "Unassigned")}
-                      </p>
-                      {appointment.notes && <p className="mt-2">Notes: {appointment.notes}</p>}
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap gap-3 lg:flex-col lg:items-end">
-                    <Link
-                      href={`/appointments/${appointment.id}`}
-                      className="rounded-full bg-sky-400 px-4 py-2 text-sm font-semibold text-slate-950 transition-colors hover:bg-sky-300"
-                    >
-                      Open overview
-                    </Link>
-                    {!isOrganizer && appointment.status !== "CANCELLED" && (
+                  {/* Actions */}
+                  <div className="ml-auto flex items-center gap-3">
+                    {!isOrganizer && apt.status !== "CANCELLED" && (
                       <button
-                        type="button"
-                        disabled={cancellingId === appointment.id}
-                        onClick={() => void handleCancel(appointment.id)}
-                        className="rounded-full border border-red-400/20 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-100 transition-colors hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                        onClick={() => handleCancel(apt.id)}
+                        disabled={cancellingId === apt.id}
+                        className="glass flex size-12 items-center justify-center rounded-2xl border-white/5 text-rose-500 transition-all hover:bg-rose-500 hover:text-white"
                       >
-                        {cancellingId === appointment.id ? "Cancelling..." : "Cancel"}
+                        <XCircle className="size-5" />
                       </button>
                     )}
+                    <Link
+                      href={`/appointments/${apt.id}`}
+                      className="glass group/btn flex h-12 items-center gap-2 rounded-2xl border-white/5 bg-white/5 px-6 text-sm font-bold text-white transition-all hover:bg-primary hover:text-white"
+                    >
+                      Manage
+                      <ChevronRight className="size-4 transition-transform group-hover/btn:translate-x-1" />
+                    </Link>
                   </div>
                 </div>
-              </article>
-            );
-          })}
+              </motion.article>
+            ))}
+          </AnimatePresence>
         </div>
       )}
     </div>
