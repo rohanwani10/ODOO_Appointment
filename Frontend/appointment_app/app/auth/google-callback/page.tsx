@@ -1,13 +1,11 @@
 "use client";
 
-import { useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { GoogleCallbackHandler } from "@/components/auth/google-callback-handler";
 
 export default function GoogleCallbackPage() {
   const searchParams = useSearchParams();
   const code = searchParams.get("code");
-  const state = searchParams.get("state");
   const error = searchParams.get("error");
 
   return (

@@ -76,6 +76,19 @@ class Organization(Base):
     deleted_at = Column(DateTime(timezone=True), nullable=True)
 
 
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    entity_type = Column(String(100), nullable=False, index=True)
+    entity_id = Column(String(100), nullable=False, index=True)
+    action = Column(String(50), nullable=False)
+    changes = Column(String, nullable=True)
+    ip_address = Column(String(45), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 class Service(Base):
     __tablename__ = "services"
 
@@ -110,6 +123,7 @@ class Resource(Base):
     type = Column(String(50), nullable=False)
     description = Column(String, nullable=True)
     capacity = Column(Integer, default=1, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     deleted_at = Column(DateTime(timezone=True), nullable=True)

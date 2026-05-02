@@ -1,14 +1,16 @@
-import { AppHeader } from "@/components/app-header";
+import { Sidebar } from "@/components/layout/sidebar";
 import { AuthGuard } from "@/components/auth/auth-guard";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <AuthGuard>
-      <div className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.10),transparent_30%),linear-gradient(180deg,#020617_0%,#0f172a_100%)] text-white">
-        <AppHeader />
-        <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-          {children}
-        </main>
+      <div className="flex min-h-screen bg-dashboard-grid bg-background text-white">
+        <Sidebar />
+        <div className="flex-1 pl-20">
+          <main className="mx-auto max-w-7xl px-6 py-8 sm:px-8 lg:px-10">
+            {children}
+          </main>
+        </div>
       </div>
     </AuthGuard>
   );

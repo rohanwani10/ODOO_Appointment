@@ -87,7 +87,6 @@ export default function LoginPage() {
 
       <main className="flex min-h-screen items-center justify-center pt-20">
         <div className="w-full max-w-lg px-4 py-12">
-          {/* Intro Badge */}
           <div className="mb-8 flex justify-center">
             <div className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white/75 px-4 py-1.5 text-sm font-medium text-slate-700 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/5 dark:text-slate-200">
               <LogIn className="size-4 text-slate-500 dark:text-slate-400" />
@@ -95,7 +94,6 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {/* Heading */}
           <div className="mb-10 text-center">
             <h1 className="text-4xl font-semibold tracking-tight text-slate-950 dark:text-white">
               Sign in to your account
@@ -105,7 +103,6 @@ export default function LoginPage() {
             </p>
           </div>
 
-          {/* Error Banner */}
           {error && (
             <div className="mb-6 rounded-lg border border-red-300 bg-red-50 p-4 flex items-start gap-3 dark:border-red-400/30 dark:bg-red-500/10">
               <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
@@ -115,10 +112,8 @@ export default function LoginPage() {
             </div>
           )}
 
-          {/* Form Card */}
           <div className="rounded-2xl border border-slate-200 bg-white/80 p-8 shadow-[0_12px_40px_rgba(15,23,42,0.06)] backdrop-blur dark:border-white/10 dark:bg-white/[0.04] sm:p-10">
             <form onSubmit={handleSubmit} className="space-y-5">
-              {/* Email Field */}
               <div>
                 <label className="mb-2.5 block text-sm font-semibold text-slate-900 dark:text-white">
                   Email address
@@ -136,7 +131,6 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              {/* Password Field */}
               <div>
                 <div className="mb-2.5 flex items-center justify-between">
                   <label className="block text-sm font-semibold text-slate-900 dark:text-white">
@@ -162,7 +156,6 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              {/* Submit Button */}
               <button
                 type="submit"
                 disabled={isLoading}
@@ -182,7 +175,6 @@ export default function LoginPage() {
               </button>
             </form>
 
-            {/* Google Sign-In Button */}
             <div className="mt-6">
               <GoogleLoginButton
                 onSuccess={() => {
@@ -193,7 +185,6 @@ export default function LoginPage() {
               />
             </div>
 
-            {/* Divider */}
             <div className="relative mt-6 mb-6">
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-slate-300 dark:border-white/10" />
@@ -205,7 +196,6 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* Signup Link */}
             <Link
               href="/auth/register"
               className="w-full inline-flex items-center justify-center rounded-full border border-slate-300 bg-white/80 px-7 py-3 text-base font-semibold text-slate-900 shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-400 hover:bg-white dark:border-white/10 dark:bg-white/5 dark:text-white dark:hover:bg-white/10"
@@ -214,7 +204,6 @@ export default function LoginPage() {
             </Link>
           </div>
 
-          {/* Footer Info */}
           <p className="mt-6 text-center text-xs text-slate-500 dark:text-slate-400">
             By signing in, you agree to our{" "}
             <Link
