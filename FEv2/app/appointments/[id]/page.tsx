@@ -2,25 +2,30 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { RequireAuth } from "@/components/require-auth";
 import { useAuth } from "@/components/auth-provider";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime, toDateInputValue } from "@/lib/format";
+import { loadRazorpayScript } from "@/lib/razorpay";
 import type {
   Appointment,
   AppointmentConfirmation,
   AvailableSlot,
   BookingFormResponse,
+  PaymentStatus,
+  RazorpayOrderResponse,
 } from "@/lib/types";
 
 export default function AppointmentDetailPage() {
   const params = useParams<{ id: string }>();
-  const { hasRole } = useAuth();
+  const searchParams = useSearchParams();
+  const { hasRole, user } = useAuth();
   const appointmentId = Number(params.id);
   const [appointment, setAppointment] = useState<Appointment | null>(null);
   const [confirmation, setConfirmation] = useState<AppointmentConfirmation | null>(null);
   const [formResponses, setFormResponses] = useState<BookingFormResponse[]>([]);
+  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus | null>(null);
   const [slots, setSlots] = useState<AvailableSlot[]>([]);
   const [selectedDate, setSelectedDate] = useState(toDateInputValue());
   const [selectedSlotKey, setSelectedSlotKey] = useState("");
@@ -31,14 +36,16 @@ export default function AppointmentDetailPage() {
 
   async function loadAppointment() {
     try {
-      const [appointmentData, confirmationData, responseData] = await Promise.all([
+      const [appointmentData, confirmationData, responseData, paymentData] = await Promise.all([
         apiFetch<Appointment>(`/api/appointments/${appointmentId}`),
         apiFetch<AppointmentConfirmation>(`/api/appointments/${appointmentId}/confirmation`),
         apiFetch<BookingFormResponse[]>(`/api/appointments/${appointmentId}/form-responses`),
+        apiFetch<PaymentStatus>(`/api/payments/appointments/${appointmentId}`),
       ]);
       setAppointment(appointmentData);
       setConfirmation(confirmationData);
       setFormResponses(responseData);
+      setPaymentStatus(paymentData);
       setSelectedDate(toDateInputValue(new Date(appointmentData.start_time)));
       setSelectedStatus(appointmentData.status);
     } catch (loadError) {
@@ -49,6 +56,17 @@ export default function AppointmentDetailPage() {
   useEffect(() => {
     void loadAppointment();
   }, [appointmentId]);
+
+  useEffect(() => {
+    const paymentState = searchParams.get("payment");
+    if (paymentState === "success") {
+      setMessage("Advance payment completed.");
+    } else if (paymentState === "pending") {
+      setMessage("Appointment created. Advance payment is still pending.");
+    } else if (paymentState === "failed") {
+      setMessage("Appointment created, but payment was not completed.");
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     let active = true;
@@ -169,6 +187,92 @@ export default function AppointmentDetailPage() {
     }
   }
 
+  async function handlePayNow() {
+    if (!appointment || !paymentStatus?.requires_payment || paymentStatus.is_paid) {
+      return;
+    }
+
+    setError(null);
+    setMessage(null);
+
+    const scriptLoaded = await loadRazorpayScript();
+    const RazorpayCheckout = window.Razorpay;
+    if (!scriptLoaded || !RazorpayCheckout) {
+      setError("Unable to load Razorpay Checkout.");
+      return;
+    }
+
+    try {
+      const order = await apiFetch<RazorpayOrderResponse>(
+        `/api/payments/appointments/${appointment.id}/order`,
+        {
+          method: "POST",
+        },
+      );
+
+      await new Promise<void>((resolve) => {
+        const razorpay = new RazorpayCheckout({
+          key: order.key_id,
+          amount: order.amount,
+          currency: order.currency,
+          name: confirmation?.service_name || `Appointment #${appointment.id}`,
+          description: "Advance payment for appointment booking",
+          order_id: order.order_id,
+          prefill: {
+            name: user ? `${user.first_name} ${user.last_name}`.trim() : "",
+            email: user?.email || "",
+            contact: user?.phone || "",
+          },
+          notes: {
+            appointment_id: String(appointment.id),
+          },
+          handler: async (response: Record<string, string>) => {
+            try {
+              const verified = await apiFetch<PaymentStatus>(
+                `/api/payments/appointments/${appointment.id}/verify`,
+                {
+                  method: "POST",
+                  body: JSON.stringify({
+                    razorpay_order_id: response.razorpay_order_id,
+                    razorpay_payment_id: response.razorpay_payment_id,
+                    razorpay_signature: response.razorpay_signature,
+                  }),
+                },
+              );
+              setPaymentStatus(verified);
+              setMessage("Advance payment completed.");
+              await loadAppointment();
+            } catch (paymentError) {
+              setError(
+                paymentError instanceof Error
+                  ? paymentError.message
+                  : "Unable to verify payment",
+              );
+            } finally {
+              resolve();
+            }
+          },
+          modal: {
+            ondismiss: () => {
+              setMessage("Payment was not completed.");
+              resolve();
+            },
+          },
+          theme: {
+            color: "#0f172a",
+          },
+        });
+        razorpay.on("payment.failed", () => {
+          setMessage("Payment failed. You can try again.");
+          resolve();
+        });
+        razorpay.open();
+      });
+    } catch (paymentError) {
+      setError(paymentError instanceof Error ? paymentError.message : "Unable to start payment");
+    }
+  }
+
   return (
     <RequireAuth>
       <div className="page">
@@ -199,6 +303,22 @@ export default function AppointmentDetailPage() {
             <h2>Confirmation snapshot</h2>
             <p>Created: {formatDateTime(confirmation.created_at)}</p>
             <p>Status at load: {confirmation.status}</p>
+          </section>
+        ) : null}
+
+        {paymentStatus?.requires_payment ? (
+          <section className="panel">
+            <h2>Advance payment</h2>
+            <p>Amount: {paymentStatus.amount} {paymentStatus.currency}</p>
+            <p>Status: {paymentStatus.is_paid ? "Paid" : paymentStatus.latest_payment?.status || "Pending"}</p>
+            {paymentStatus.latest_payment?.razorpay_payment_id ? (
+              <p>Payment reference: {paymentStatus.latest_payment.razorpay_payment_id}</p>
+            ) : null}
+            {!paymentStatus.is_paid && !hasRole("ORGANIZER", "ADMIN") ? (
+              <button type="button" onClick={() => void handlePayNow()}>
+                Pay advance now
+              </button>
+            ) : null}
           </section>
         ) : null}
 

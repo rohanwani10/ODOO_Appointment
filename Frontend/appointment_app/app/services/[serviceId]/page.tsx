@@ -36,6 +36,18 @@ function getQuestionError(
   return undefined;
 }
 
+function getBookingLimitHint(limit?: number | null) {
+  if (!limit) {
+    return null;
+  }
+
+  if (limit === 1) {
+    return "This service allows 1 active upcoming booking per customer.";
+  }
+
+  return `This service allows ${limit} active upcoming bookings per customer.`;
+}
+
 export default function ServiceBookingPage() {
   const params = useParams<{ serviceId: string }>();
   const router = useRouter();
@@ -66,6 +78,10 @@ export default function ServiceBookingPage() {
 
     return resources.find((resource) => resource.id === selectedSlot.resource_id) ?? null;
   }, [resources, selectedSlot]);
+  const bookingLimitHint = useMemo(
+    () => getBookingLimitHint(service?.max_bookings_per_user),
+    [service?.max_bookings_per_user],
+  );
 
   useEffect(() => {
     let isCancelled = false;
@@ -332,7 +348,10 @@ export default function ServiceBookingPage() {
                 type="date"
                 value={selectedDate}
                 min={toDateInputValue()}
-                onChange={(event) => setSelectedDate(event.target.value)}
+                onChange={(event) => {
+                  setSelectedDate(event.target.value);
+                  setBookingError(null);
+                }}
                 className="rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none focus:border-sky-400/70"
               />
             </div>
@@ -357,7 +376,10 @@ export default function ServiceBookingPage() {
                       <button
                         key={`${slot.resource_id}-${slot.start_time}`}
                         type="button"
-                        onClick={() => setSelectedSlot(slot)}
+                        onClick={() => {
+                          setSelectedSlot(slot);
+                          setBookingError(null);
+                        }}
                         className={`rounded-2xl border p-4 text-left transition-colors ${
                           isSelected
                             ? "border-sky-300/40 bg-sky-400/10"
@@ -543,6 +565,15 @@ export default function ServiceBookingPage() {
                   {selectedResource?.name || selectedSlot?.resource_name || "Select a slot first"}
                 </p>
               </div>
+
+              {bookingLimitHint ? (
+                <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
+                    Booking rule
+                  </p>
+                  <p className="mt-2 text-sm text-slate-300">{bookingLimitHint}</p>
+                </div>
+              ) : null}
 
               {service.requires_advance_payment ? (
                 <div className="rounded-2xl border border-amber-300/20 bg-amber-400/10 p-4">

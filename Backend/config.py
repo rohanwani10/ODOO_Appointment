@@ -44,6 +44,11 @@ class Settings(BaseSettings):
         "https://www.googleapis.com/auth/calendar",
         "https://www.googleapis.com/auth/calendar.events",
     ]
+
+    # Razorpay
+    RAZORPAY_KEY_ID: str = os.getenv("RAZORPAY_KEY_ID", "")
+    RAZORPAY_KEY_SECRET: str = os.getenv("RAZORPAY_KEY_SECRET", "")
+    RAZORPAY_CURRENCY: str = os.getenv("RAZORPAY_CURRENCY", "INR")
     
     # Server
     DEBUG: bool = os.getenv("DEBUG", "True").lower() == "true"
@@ -54,7 +59,7 @@ class Settings(BaseSettings):
     APP_VERSION: str = "0.1.0"
     
     class Config:
-        env_file = ".env"
+        env_file = str(BACKEND_DIR / ".env")
         case_sensitive = True
 
 

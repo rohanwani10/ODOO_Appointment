@@ -5,8 +5,17 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { formatDate, formatTime, toDateInputValue } from "@/lib/format";
+import { loadRazorpayScript } from "@/lib/razorpay";
 import { useAuth } from "@/components/auth-provider";
-import type { Appointment, AvailableSlot, FormQuestion, Resource, Service } from "@/lib/types";
+import type {
+  Appointment,
+  AvailableSlot,
+  FormQuestion,
+  PaymentStatus,
+  RazorpayOrderResponse,
+  Resource,
+  Service,
+} from "@/lib/types";
 
 function parseOptions(input?: string | null) {
   if (!input) {
@@ -31,10 +40,22 @@ function parseOptions(input?: string | null) {
   return [];
 }
 
+function getBookingLimitHint(limit?: number | null) {
+  if (!limit) {
+    return null;
+  }
+
+  if (limit === 1) {
+    return "This service allows 1 active upcoming booking per customer.";
+  }
+
+  return `This service allows ${limit} active upcoming bookings per customer.`;
+}
+
 export default function ServicePage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const serviceId = Number(params.id);
 
   const [service, setService] = useState<Service | null>(null);
@@ -53,6 +74,10 @@ export default function ServicePage() {
   const selectedResource = useMemo(
     () => resources.find((resource) => resource.id === selectedSlot?.resource_id) ?? null,
     [resources, selectedSlot],
+  );
+  const bookingLimitHint = useMemo(
+    () => getBookingLimitHint(service?.max_bookings_per_user),
+    [service?.max_bookings_per_user],
   );
 
   useEffect(() => {
@@ -129,6 +154,11 @@ export default function ServicePage() {
   }, [selectedDate, serviceId]);
 
   async function handleBook() {
+    if (!service) {
+      setError("Service is not available.");
+      return;
+    }
+
     if (!selectedSlot) {
       setError("Pick a slot before booking.");
       return;
@@ -178,6 +208,72 @@ export default function ServicePage() {
         });
       }
 
+      if (service.requires_advance_payment && service.advance_payment_amount) {
+        const scriptLoaded = await loadRazorpayScript();
+        const RazorpayCheckout = window.Razorpay;
+        if (!scriptLoaded || !RazorpayCheckout) {
+          router.push(`/appointments/${appointment.id}?payment=failed`);
+          return;
+        }
+
+        const order = await apiFetch<RazorpayOrderResponse>(
+          `/api/payments/appointments/${appointment.id}/order`,
+          {
+            method: "POST",
+          },
+        );
+
+        const paymentOutcome = await new Promise<"success" | "pending" | "failed">((resolve) => {
+          const razorpay = new RazorpayCheckout({
+            key: order.key_id,
+            amount: order.amount,
+            currency: order.currency,
+            name: service.name,
+            description: "Advance payment for appointment booking",
+            order_id: order.order_id,
+            prefill: {
+              name: user ? `${user.first_name} ${user.last_name}`.trim() : "",
+              email: user?.email || "",
+              contact: user?.phone || "",
+            },
+            notes: {
+              appointment_id: String(appointment.id),
+              service_id: String(service.id),
+            },
+            handler: async (response: Record<string, string>) => {
+              try {
+                await apiFetch<PaymentStatus>(
+                  `/api/payments/appointments/${appointment.id}/verify`,
+                  {
+                    method: "POST",
+                    body: JSON.stringify({
+                      razorpay_order_id: response.razorpay_order_id,
+                      razorpay_payment_id: response.razorpay_payment_id,
+                      razorpay_signature: response.razorpay_signature,
+                    }),
+                  },
+                );
+                resolve("success");
+              } catch {
+                resolve("failed");
+              }
+            },
+            modal: {
+              ondismiss: () => resolve("pending"),
+            },
+            theme: {
+              color: "#0f172a",
+            },
+          });
+
+          razorpay.on("payment.failed", () => resolve("failed"));
+          razorpay.open();
+        });
+
+        router.push(`/appointments/${appointment.id}?payment=${paymentOutcome}`);
+        return;
+      }
+
       router.push(`/appointments/${appointment.id}`);
     } catch (bookingError) {
       setError(bookingError instanceof Error ? bookingError.message : "Booking failed");
@@ -202,8 +298,9 @@ export default function ServicePage() {
         <p>
           Duration: {service.duration_minutes} minutes | Capacity: {service.capacity}
         </p>
+        {bookingLimitHint ? <p>{bookingLimitHint}</p> : null}
         {service.requires_advance_payment ? (
-          <p>Advance payment required: {service.advance_payment_amount}</p>
+          <p>Advance payment required: {service.advance_payment_amount} {service.advance_payment_amount ? "INR" : ""}</p>
         ) : null}
         <p>
           <Link href="/">Back to home</Link>
@@ -215,7 +312,14 @@ export default function ServicePage() {
           <h2>Availability</h2>
           <label className="field">
             <span>Date</span>
-            <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} />
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(event) => {
+                setSelectedDate(event.target.value);
+                setError(null);
+              }}
+            />
           </label>
           {isLoadingSlots ? <p>Loading slots...</p> : null}
           <div className="list">
@@ -224,7 +328,10 @@ export default function ServicePage() {
                 key={`${slot.resource_id}-${slot.start_time}`}
                 type="button"
                 className="item"
-                onClick={() => setSelectedSlot(slot)}
+                onClick={() => {
+                  setSelectedSlot(slot);
+                  setError(null);
+                }}
               >
                 <strong>{formatTime(slot.start_time)} to {formatTime(slot.end_time)}</strong>
                 <p>{slot.resource_name}</p>
@@ -313,7 +420,13 @@ export default function ServicePage() {
 
           {error ? <p className="error">{error}</p> : null}
           <button type="button" disabled={!selectedSlot || isBooking} onClick={() => void handleBook()}>
-            {isBooking ? "Booking..." : isAuthenticated ? "Book appointment" : "Login to book"}
+            {isBooking
+              ? "Booking..."
+              : isAuthenticated
+                ? service.requires_advance_payment
+                  ? "Book and pay advance"
+                  : "Book appointment"
+                : "Login to book"}
           </button>
         </div>
       </section>

@@ -8,6 +8,7 @@ import type {
   Appointment,
   GoogleAuthorizationResponse,
   GoogleCalendarItem,
+  GoogleCalendarListResponse,
   User,
 } from "@/lib/types";
 
@@ -156,7 +157,10 @@ export default function SettingsPage() {
 
   async function handleLoadGoogleCalendars() {
     try {
-      const calendars = await apiFetch<GoogleCalendarItem[]>("/api/auth/google/calendar/list");
+      const response = await apiFetch<GoogleCalendarItem[] | GoogleCalendarListResponse>(
+        "/api/auth/google/calendar/list",
+      );
+      const calendars = Array.isArray(response) ? response : response.items ?? [];
       setGoogleCalendars(calendars);
       setMessage("Google calendars loaded.");
     } catch (submitError) {

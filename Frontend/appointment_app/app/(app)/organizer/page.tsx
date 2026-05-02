@@ -775,11 +775,26 @@ export default function OrganizerWorkspacePage() {
 
   async function handleCopyShareableLink(service: Service) {
     try {
-      if (!service.shareable_link) {
-        const updated = await apiFetch<Service>(`/api/services/${service.id}/shareable-link`, { method: "POST" });
-        service = updated;
+      if (!service.is_published) {
+        const publishResponse = await apiFetch<{ message: string; shareable_link?: string }>(
+          `/api/services/${service.id}/publish`,
+          { method: "POST" },
+        );
+        service = {
+          ...service,
+          is_published: true,
+          shareable_link: publishResponse.shareable_link ?? service.shareable_link,
+        };
       }
-      const link = `${window.location.origin}/book/${service.shareable_link}`;
+
+      if (!service.shareable_link) {
+        const updated = await apiFetch<{ shareable_link: string }>(
+          `/api/services/${service.id}/shareable-link`,
+          { method: "POST" },
+        );
+        service = { ...service, shareable_link: updated.shareable_link };
+      }
+      const link = `${window.location.origin}/services/share/${service.shareable_link}`;
       await navigator.clipboard.writeText(link);
       setCopiedLinkId(service.id);
       addToast("Link copied to clipboard", "success");
