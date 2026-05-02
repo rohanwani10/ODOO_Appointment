@@ -60,8 +60,8 @@ const integrationBullets = [
 function BookingVisual() {
   return (
     <div className="relative mx-auto w-full max-w-5xl">
-      <div className="absolute -inset-6 rounded-[2rem] bg-[radial-gradient(circle_at_top_left,rgba(99,102,241,0.28),transparent_45%),radial-gradient(circle_at_bottom_right,rgba(14,165,233,0.22),transparent_40%)] blur-2xl" />
-      <div className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-slate-950/85 shadow-[0_30px_100px_rgba(2,6,23,0.45)] backdrop-blur">
+      <div className="absolute -inset-10 rounded-[4rem] bg-primary/20 blur-[120px] opacity-50" />
+      <div className="glass-premium relative overflow-hidden rounded-[3rem] shadow-[0_40px_120px_rgba(2,6,23,0.6)]">
         <div className="flex items-center justify-between border-b border-white/10 px-5 py-4 text-xs text-slate-400 sm:px-6">
           <div className="flex items-center gap-2.5 text-slate-200">
             <span className="flex size-8 items-center justify-center rounded-full bg-white/10 text-[0.65rem] font-semibold tracking-[0.2em] text-white">
@@ -188,9 +188,9 @@ function BookingVisual() {
               </div>
 
               <div className="grid grid-cols-7 gap-2">
-                {["S", "M", "T", "W", "T", "F", "S"].map((day) => (
+                {["S", "M", "T", "W", "T", "F", "S"].map((day, index) => (
                   <div
-                    key={day}
+                    key={index}
                     className="pb-2 text-center text-[0.65rem] uppercase tracking-[0.25em] text-slate-500"
                   >
                     {day}
@@ -266,16 +266,16 @@ function FeatureCard({
   description: string;
 }) {
   return (
-    <article className="group relative overflow-hidden rounded-[1.5rem] border border-slate-200/80 bg-white/80 p-6 shadow-[0_12px_40px_rgba(15,23,42,0.06)] backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:border-slate-300 hover:shadow-[0_24px_80px_rgba(15,23,42,0.12)] dark:border-white/10 dark:bg-white/[0.04]">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.15),transparent_38%)] opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+    <article className="glass-premium group relative overflow-hidden rounded-[2rem] p-8 transition-all duration-300 hover:-translate-y-2 hover:bg-white/[0.08]">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(56,189,248,0.1),transparent_40%)] opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
       <div className="relative">
-        <div className="mb-5 flex size-12 items-center justify-center rounded-2xl border border-slate-200 bg-slate-950 text-white shadow-lg shadow-slate-950/10 dark:border-white/10 dark:bg-white/10">
-          <Icon className="size-5" />
+        <div className="mb-6 flex size-14 items-center justify-center rounded-2xl bg-white/5 text-primary shadow-2xl transition-transform group-hover:scale-110">
+          <Icon className="size-6" />
         </div>
-        <h3 className="text-lg font-semibold tracking-tight text-slate-950 dark:text-white">
+        <h3 className="text-xl font-bold tracking-tight text-white">
           {title}
         </h3>
-        <p className="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-300">
+        <p className="mt-4 text-sm leading-7 text-slate-400">
           {description}
         </p>
       </div>
