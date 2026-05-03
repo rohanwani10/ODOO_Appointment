@@ -157,11 +157,27 @@ export interface AppointmentConfirmation {
   status: string;
   service_name?: string | null;
   resource_name?: string | null;
+  customer_email?: string | null;
+  customer_name?: string | null;
   start_time: string;
   end_time: string;
   capacity_used: number;
   notes?: string | null;
+  virtual_meeting_provider?: string | null;
+  virtual_meeting_join_url?: string | null;
+  virtual_meeting_start_url?: string | null;
   created_at: string;
+}
+
+export interface VirtualMeetingShare {
+  appointment_id: number;
+  provider: string;
+  meeting_id?: string | null;
+  join_url: string;
+  start_url?: string | null;
+  recipient_email: string;
+  sent_at: string;
+  reused_existing_meeting: boolean;
 }
 
 export interface BookingFormResponse {

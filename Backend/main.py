@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone, time as time_type
 from typing import Optional, List, Any, Literal
 from sqlalchemy import func, text
+import httpx
 import os
 import secrets
 import hashlib
@@ -26,11 +27,13 @@ from database import engine, get_db, Base
 from models import (
     User, UserRole, RefreshToken, Organization, Service, Resource,
     ServiceResource, Appointment, BookingFormQuestion, BookingFormResponse,
-    ResourceWorkingHours, ResourceUnavailability, AuditLog, Payment
+    ResourceWorkingHours, ResourceUnavailability, AuditLog, Payment,
+    AppointmentVirtualMeeting,
 )
 from email_service import email_service
 from google_oauth_routes import router as google_oauth_router
 from schema_manager import sync_schema
+from zoom_service import zoom_service
 from auth import (
     create_access_token,
     create_refresh_token,
@@ -272,6 +275,22 @@ class AppointmentResponse(BaseModel):
                 else value.replace(tzinfo=timezone.utc).isoformat().replace("+00:00", "Z")
             )
         }
+
+
+class ShareZoomMeetingRequest(BaseModel):
+    recipient_email: EmailStr
+    recipient_name: Optional[str] = None
+
+
+class VirtualMeetingResponse(BaseModel):
+    appointment_id: int
+    provider: str
+    meeting_id: Optional[str] = None
+    join_url: str
+    start_url: Optional[str] = None
+    recipient_email: EmailStr
+    sent_at: datetime
+    reused_existing_meeting: bool = False
 
 # ==================== Phase 2: Resource Pydantic Models ====================
 
@@ -563,6 +582,9 @@ def validate_runtime_configuration() -> None:
     smtp_has_partial_config = bool(settings.SMTP_USERNAME) != bool(settings.SMTP_PASSWORD)
     google_has_partial_config = bool(settings.GOOGLE_CLIENT_ID) != bool(settings.GOOGLE_CLIENT_SECRET)
     razorpay_has_partial_config = bool(settings.RAZORPAY_KEY_ID) != bool(settings.RAZORPAY_KEY_SECRET)
+    zoom_has_partial_config = (
+        len({bool(settings.ZOOM_ACCOUNT_ID), bool(settings.ZOOM_CLIENT_ID), bool(settings.ZOOM_CLIENT_SECRET)}) > 1
+    )
 
     if smtp_has_partial_config:
         logger.warning(
@@ -587,6 +609,14 @@ def validate_runtime_configuration() -> None:
         )
     elif not settings.RAZORPAY_KEY_ID:
         logger.warning("Razorpay is not configured; payment features are disabled")
+
+    if zoom_has_partial_config:
+        logger.warning(
+            "Zoom configuration is incomplete; organizer meeting-share features are disabled until "
+            "ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID, and ZOOM_CLIENT_SECRET are all set"
+        )
+    elif not settings.ZOOM_ACCOUNT_ID:
+        logger.warning("Zoom is not configured; organizer meeting-share features are disabled")
 
 @app.on_event("startup")
 def startup():
@@ -803,6 +833,42 @@ def ensure_email_delivery_available() -> None:
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Email delivery is not configured",
         )
+
+
+def ensure_zoom_delivery_available() -> None:
+    """Fail fast when Zoom or SMTP are unavailable for meeting-share actions."""
+    ensure_email_delivery_available()
+    if not zoom_service.is_configured():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Zoom meeting sharing is not configured",
+        )
+
+
+def get_virtual_meeting_for_appointment(appointment_id: int, db: Session) -> Optional[AppointmentVirtualMeeting]:
+    return db.query(AppointmentVirtualMeeting).filter(
+        AppointmentVirtualMeeting.appointment_id == appointment_id,
+        AppointmentVirtualMeeting.provider == "ZOOM",
+    ).first()
+
+
+def serialize_virtual_meeting(
+    meeting: AppointmentVirtualMeeting,
+    *,
+    recipient_email: str,
+    reused_existing_meeting: bool,
+) -> VirtualMeetingResponse:
+    sent_at = meeting.sent_at or datetime.now(timezone.utc)
+    return VirtualMeetingResponse(
+        appointment_id=meeting.appointment_id,  # type: ignore[arg-type]
+        provider=meeting.provider,  # type: ignore[arg-type]
+        meeting_id=meeting.external_meeting_id,
+        join_url=meeting.join_url or "",
+        start_url=meeting.start_url,
+        recipient_email=recipient_email,
+        sent_at=sent_at,
+        reused_existing_meeting=reused_existing_meeting,
+    )
 
 
 def ensure_service_resource_assignment(service_id: int, resource_id: int, db: Session) -> ServiceResource:
@@ -2677,6 +2743,72 @@ def build_payment_status_response(appointment: Appointment, service: Service, db
     )
 
 
+def get_or_create_zoom_meeting_for_appointment(
+    appointment: Appointment,
+    service: Service,
+    resource: Optional[Resource],
+    db: Session,
+) -> tuple[AppointmentVirtualMeeting, bool]:
+    existing_meeting = get_virtual_meeting_for_appointment(appointment.id, db)
+    appointment_updated_at = normalize_datetime_to_utc(appointment.updated_at or appointment.created_at)
+
+    if (
+        existing_meeting
+        and existing_meeting.join_url
+        and existing_meeting.updated_at
+        and normalize_datetime_to_utc(existing_meeting.updated_at) >= appointment_updated_at
+    ):
+        return existing_meeting, True
+
+    organizer = get_user_by_id(service.created_by, db)
+    customer = get_user_by_id(appointment.customer_id, db)
+    topic = f"{service.name} appointment #{appointment.id}"
+    agenda_parts = [
+        f"Service: {service.name}",
+        f"Customer: {customer.first_name} {customer.last_name}".strip() if customer else None,
+        f"Resource: {resource.name}" if resource else None,
+        f"Notes: {appointment.notes}" if appointment.notes else None,
+    ]
+    agenda = "\n".join(part for part in agenda_parts if part)
+    meeting_payload = zoom_service.create_scheduled_meeting(
+        topic=topic,
+        start_time=normalize_datetime_to_utc(appointment.start_time),
+        end_time=normalize_datetime_to_utc(appointment.end_time),
+        agenda=agenda,
+    )
+
+    now_utc = datetime.now(timezone.utc)
+    if existing_meeting is None:
+        existing_meeting = AppointmentVirtualMeeting(
+            appointment_id=appointment.id,
+            provider="ZOOM",
+        )
+        db.add(existing_meeting)
+
+    existing_meeting.external_meeting_id = str(meeting_payload.get("id") or "")  # type: ignore[assignment]
+    existing_meeting.join_url = meeting_payload.get("join_url")  # type: ignore[assignment]
+    existing_meeting.start_url = meeting_payload.get("start_url")  # type: ignore[assignment]
+    existing_meeting.meeting_password = (
+        meeting_payload.get("password") or meeting_payload.get("encrypted_password")
+    )  # type: ignore[assignment]
+    existing_meeting.host_email = (
+        str(meeting_payload.get("host_email"))
+        if meeting_payload.get("host_email") is not None
+        else organizer.email if organizer else None
+    )  # type: ignore[assignment]
+    existing_meeting.meeting_payload = json.dumps(meeting_payload)  # type: ignore[assignment]
+    existing_meeting.updated_at = now_utc  # type: ignore[assignment]
+    db.flush()
+
+    if not existing_meeting.join_url:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Zoom did not return a join URL for the meeting",
+        )
+
+    return existing_meeting, False
+
+
 def razorpay_request(method: str, path: str, payload: Optional[dict] = None) -> dict:
     ensure_razorpay_configured()
     base_url = "https://api.razorpay.com/v1"
@@ -3027,23 +3159,116 @@ def get_appointment_confirmation(appointment_id: int, current_user: User = Depen
     if not appt:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Appointment not found")
     service = db.query(Service).filter(Service.id == appt.service_id).first()
+    customer = db.query(User).filter(User.id == appt.customer_id).first()
     roles = get_user_roles(current_user.id, db)
     if appt.customer_id != current_user.id:  # type: ignore[operator]
         can_view_as_owner = bool(service and service.created_by == current_user.id)
         if "ADMIN" not in roles and not can_view_as_owner:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
     resource = db.query(Resource).filter(Resource.id == appt.resource_id).first() if appt.resource_id else None
+    virtual_meeting = get_virtual_meeting_for_appointment(appt.id, db)
     return {
         "appointment_id": appt.id,
         "status": appt.status,
         "service_name": service.name if service else None,
         "resource_name": resource.name if resource else None,
+        "customer_email": customer.email if customer else None,
+        "customer_name": (
+            f"{customer.first_name} {customer.last_name}".strip()
+            if customer
+            else None
+        ),
         "start_time": serialize_datetime(appt.start_time),
         "end_time": serialize_datetime(appt.end_time),
         "capacity_used": appt.capacity_used,
         "notes": appt.notes,
+        "virtual_meeting_provider": virtual_meeting.provider if virtual_meeting else None,
+        "virtual_meeting_join_url": virtual_meeting.join_url if virtual_meeting else None,
+        "virtual_meeting_start_url": virtual_meeting.start_url if virtual_meeting else None,
         "created_at": serialize_datetime(appt.created_at),
     }
+
+
+@app.post("/api/appointments/{appointment_id}/zoom-share", response_model=VirtualMeetingResponse)
+def share_zoom_meeting(
+    appointment_id: int,
+    request: ShareZoomMeetingRequest,
+    current_user: User = Depends(require_role("ORGANIZER", "ADMIN")),
+    db: Session = Depends(get_db),
+):
+    """Create or reuse a Zoom meeting for an appointment and email the join link."""
+    ensure_zoom_delivery_available()
+
+    appointment = get_appointment_or_404(appointment_id, db)
+    if appointment.status == "CANCELLED":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot share a Zoom meeting for a cancelled appointment",
+        )
+
+    service = get_service_or_404(appointment.service_id, db)
+    roles = get_user_roles(current_user.id, db)
+    if service.created_by != current_user.id and "ADMIN" not in roles:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+
+    resource = db.query(Resource).filter(Resource.id == appointment.resource_id).first() if appointment.resource_id else None
+    customer = db.query(User).filter(User.id == appointment.customer_id).first()
+    recipient_name = (
+        request.recipient_name.strip()
+        if request.recipient_name and request.recipient_name.strip()
+        else (
+            f"{customer.first_name} {customer.last_name}".strip()
+            if customer and customer.email == request.recipient_email
+            else "there"
+        )
+    )
+
+    try:
+        virtual_meeting, reused_existing_meeting = get_or_create_zoom_meeting_for_appointment(
+            appointment,
+            service,
+            resource,
+            db,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
+
+    db.commit()
+    db.refresh(virtual_meeting)
+
+    email_sent = email_service.send_zoom_meeting_invite_email(
+        email=request.recipient_email,
+        recipient_name=recipient_name,
+        organizer_name=f"{current_user.first_name} {current_user.last_name}".strip() or current_user.email,
+        service_name=service.name,
+        start_time=normalize_datetime_to_utc(appointment.start_time),
+        end_time=normalize_datetime_to_utc(appointment.end_time),
+        join_url=virtual_meeting.join_url or "",
+        resource_name=resource.name if resource else None,
+        notes=appointment.notes,
+    )
+
+    if not email_sent:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Zoom meeting created, but email delivery failed",
+        )
+
+    now_utc = datetime.now(timezone.utc)
+    virtual_meeting.recipient_email = request.recipient_email  # type: ignore[assignment]
+    virtual_meeting.sent_at = now_utc  # type: ignore[assignment]
+    virtual_meeting.updated_at = now_utc  # type: ignore[assignment]
+    db.commit()
+    db.refresh(virtual_meeting)
+
+    return serialize_virtual_meeting(
+        virtual_meeting,
+        recipient_email=request.recipient_email,
+        reused_existing_meeting=reused_existing_meeting,
+    )
 
 
 @app.put("/api/appointments/{appointment_id}/status")

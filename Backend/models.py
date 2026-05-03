@@ -222,6 +222,29 @@ class Payment(Base):
     )
 
 
+class AppointmentVirtualMeeting(Base):
+    __tablename__ = "appointment_virtual_meetings"
+
+    id: Any = Column(Integer, primary_key=True, index=True)
+    appointment_id: Any = Column(Integer, ForeignKey("appointments.id", ondelete="CASCADE"), nullable=False, index=True)
+    provider: Any = Column(String(50), nullable=False, default="ZOOM", index=True)
+    external_meeting_id: Any = Column(String(255), nullable=True)
+    join_url: Any = Column(String(1000), nullable=True)
+    start_url: Any = Column(String(2000), nullable=True)
+    meeting_password: Any = Column(String(255), nullable=True)
+    host_email: Any = Column(String(255), nullable=True)
+    recipient_email: Any = Column(String(255), nullable=True)
+    meeting_payload: Any = Column(String, nullable=True)
+    sent_at: Any = Column(DateTime(timezone=True), nullable=True)
+    created_at: Any = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Any = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        CheckConstraint("provider IN ('ZOOM')"),
+        UniqueConstraint("appointment_id", "provider", name="uq_appointment_virtual_meeting"),
+    )
+
+
 class ResourceWorkingHours(Base):
     __tablename__ = "resource_working_hours"
 
