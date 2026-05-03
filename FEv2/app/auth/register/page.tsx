@@ -27,7 +27,11 @@ export default function RegisterPage() {
       await register(form);
       router.replace("/dashboard");
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Registration failed");
+      setError(
+        submitError instanceof Error
+          ? submitError.message
+          : "Registration failed",
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -43,7 +47,12 @@ export default function RegisterPage() {
               <span>First name</span>
               <input
                 value={form.first_name}
-                onChange={(event) => setForm((current) => ({ ...current, first_name: event.target.value }))}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    first_name: event.target.value,
+                  }))
+                }
                 required
               />
             </label>
@@ -51,7 +60,12 @@ export default function RegisterPage() {
               <span>Last name</span>
               <input
                 value={form.last_name}
-                onChange={(event) => setForm((current) => ({ ...current, last_name: event.target.value }))}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    last_name: event.target.value,
+                  }))
+                }
                 required
               />
             </label>
@@ -61,7 +75,12 @@ export default function RegisterPage() {
             <input
               type="email"
               value={form.email}
-              onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  email: event.target.value,
+                }))
+              }
               required
             />
           </label>
@@ -69,7 +88,12 @@ export default function RegisterPage() {
             <span>Phone</span>
             <input
               value={form.phone}
-              onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  phone: event.target.value,
+                }))
+              }
             />
           </label>
           <label className="field">
@@ -77,7 +101,12 @@ export default function RegisterPage() {
             <input
               type="password"
               value={form.password}
-              onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  password: event.target.value,
+                }))
+              }
               required
             />
           </label>
@@ -97,7 +126,7 @@ export default function RegisterPage() {
             </select>
           </label>
           {error ? <p className="error">{error}</p> : null}
-          <button type="submit" disabled={isSubmitting}>
+          <button type="submit" disabled={isSubmitting} className="button">
             {isSubmitting ? "Creating account..." : "Register"}
           </button>
         </form>

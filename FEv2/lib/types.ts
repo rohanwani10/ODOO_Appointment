@@ -120,64 +120,16 @@ export interface Appointment {
   updated_at?: string | null;
 }
 
-export interface PaymentRecord {
-  id: number;
-  appointment_id: number;
-  provider: string;
-  status: "CREATED" | "AUTHORIZED" | "CAPTURED" | "FAILED" | "CANCELLED";
-  amount: number;
-  currency: string;
-  razorpay_order_id?: string | null;
-  razorpay_payment_id?: string | null;
-  verified_at?: string | null;
-  created_at: string;
-  updated_at?: string | null;
-}
-
-export interface PaymentStatus {
-  appointment_id: number;
-  requires_payment: boolean;
-  amount: number;
-  currency: string;
-  is_paid: boolean;
-  latest_payment?: PaymentRecord | null;
-}
-
-export interface RazorpayOrderResponse {
-  appointment_id: number;
-  key_id: string;
-  order_id: string;
-  amount: number;
-  currency: string;
-  payment: PaymentRecord;
-}
-
 export interface AppointmentConfirmation {
   appointment_id: number;
   status: string;
   service_name?: string | null;
   resource_name?: string | null;
-  customer_email?: string | null;
-  customer_name?: string | null;
   start_time: string;
   end_time: string;
   capacity_used: number;
   notes?: string | null;
-  virtual_meeting_provider?: string | null;
-  virtual_meeting_join_url?: string | null;
-  virtual_meeting_start_url?: string | null;
   created_at: string;
-}
-
-export interface VirtualMeetingShare {
-  appointment_id: number;
-  provider: string;
-  meeting_id?: string | null;
-  join_url: string;
-  start_url?: string | null;
-  recipient_email: string;
-  sent_at: string;
-  reused_existing_meeting: boolean;
 }
 
 export interface BookingFormResponse {
@@ -265,8 +217,4 @@ export interface GoogleCalendarItem {
   id: string;
   summary?: string;
   primary?: boolean;
-}
-
-export interface GoogleCalendarListResponse {
-  items?: GoogleCalendarItem[];
 }

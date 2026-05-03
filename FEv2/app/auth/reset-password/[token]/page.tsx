@@ -19,20 +19,25 @@ export default function ResetPasswordPage() {
     setIsSubmitting(true);
 
     try {
-      const response = await apiFetch<{ message: string }>("/api/auth/reset-password", {
-        method: "POST",
-        skipAuth: true,
-        body: JSON.stringify({
-          token: params.token,
-          new_password: newPassword,
-        }),
-      });
+      const response = await apiFetch<{ message: string }>(
+        "/api/auth/reset-password",
+        {
+          method: "POST",
+          skipAuth: true,
+          body: JSON.stringify({
+            token: params.token,
+            new_password: newPassword,
+          }),
+        },
+      );
       setMessage(response.message);
       setTimeout(() => {
         router.replace("/auth/login");
       }, 1200);
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Reset failed");
+      setError(
+        submitError instanceof Error ? submitError.message : "Reset failed",
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -54,7 +59,7 @@ export default function ResetPasswordPage() {
           </label>
           {message ? <p className="success">{message}</p> : null}
           {error ? <p className="error">{error}</p> : null}
-          <button type="submit" disabled={isSubmitting}>
+          <button type="submit" disabled={isSubmitting} className="button">
             {isSubmitting ? "Resetting..." : "Reset password"}
           </button>
         </form>

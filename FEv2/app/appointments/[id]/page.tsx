@@ -2,19 +2,16 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams } from "next/navigation";
 import { RequireAuth } from "@/components/require-auth";
 import { useAuth } from "@/components/auth-provider";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime, toDateInputValue } from "@/lib/format";
-import { loadRazorpayScript } from "@/lib/razorpay";
 import type {
   Appointment,
   AppointmentConfirmation,
   AvailableSlot,
   BookingFormResponse,
-  PaymentStatus,
-  RazorpayOrderResponse,
 } from "@/lib/types";
 
 interface VirtualMeeting {
@@ -29,13 +26,11 @@ interface VirtualMeeting {
 
 export default function AppointmentDetailPage() {
   const params = useParams<{ id: string }>();
-  const searchParams = useSearchParams();
-  const { hasRole, user } = useAuth();
+  const { hasRole } = useAuth();
   const appointmentId = Number(params.id);
   const [appointment, setAppointment] = useState<Appointment | null>(null);
   const [confirmation, setConfirmation] = useState<AppointmentConfirmation | null>(null);
   const [formResponses, setFormResponses] = useState<BookingFormResponse[]>([]);
-  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus | null>(null);
   const [slots, setSlots] = useState<AvailableSlot[]>([]);
   const [selectedDate, setSelectedDate] = useState(toDateInputValue());
   const [selectedSlotKey, setSelectedSlotKey] = useState("");
@@ -49,16 +44,14 @@ export default function AppointmentDetailPage() {
 
   async function loadAppointment() {
     try {
-      const [appointmentData, confirmationData, responseData, paymentData] = await Promise.all([
+      const [appointmentData, confirmationData, responseData] = await Promise.all([
         apiFetch<Appointment>(`/api/appointments/${appointmentId}`),
         apiFetch<AppointmentConfirmation>(`/api/appointments/${appointmentId}/confirmation`),
         apiFetch<BookingFormResponse[]>(`/api/appointments/${appointmentId}/form-responses`),
-        apiFetch<PaymentStatus>(`/api/payments/appointments/${appointmentId}`),
       ]);
       setAppointment(appointmentData);
       setConfirmation(confirmationData);
       setFormResponses(responseData);
-      setPaymentStatus(paymentData);
       setSelectedDate(toDateInputValue(new Date(appointmentData.start_time)));
       setSelectedStatus(appointmentData.status);
 
@@ -87,17 +80,6 @@ export default function AppointmentDetailPage() {
   useEffect(() => {
     void loadAppointment();
   }, [appointmentId]);
-
-  useEffect(() => {
-    const paymentState = searchParams.get("payment");
-    if (paymentState === "success") {
-      setMessage("Advance payment completed.");
-    } else if (paymentState === "pending") {
-      setMessage("Appointment created. Advance payment is still pending.");
-    } else if (paymentState === "failed") {
-      setMessage("Appointment created, but payment was not completed.");
-    }
-  }, [searchParams]);
 
   useEffect(() => {
     let active = true;
@@ -360,22 +342,6 @@ export default function AppointmentDetailPage() {
             <h2>Confirmation snapshot</h2>
             <p>Created: {formatDateTime(confirmation.created_at)}</p>
             <p>Status at load: {confirmation.status}</p>
-          </section>
-        ) : null}
-
-        {paymentStatus?.requires_payment ? (
-          <section className="panel">
-            <h2>Advance payment</h2>
-            <p>Amount: {paymentStatus.amount} {paymentStatus.currency}</p>
-            <p>Status: {paymentStatus.is_paid ? "Paid" : paymentStatus.latest_payment?.status || "Pending"}</p>
-            {paymentStatus.latest_payment?.razorpay_payment_id ? (
-              <p>Payment reference: {paymentStatus.latest_payment.razorpay_payment_id}</p>
-            ) : null}
-            {!paymentStatus.is_paid && !hasRole("ORGANIZER", "ADMIN") ? (
-              <button type="button" onClick={() => void handlePayNow()}>
-                Pay advance now
-              </button>
-            ) : null}
           </section>
         ) : null}
 

@@ -23,42 +23,62 @@ function LoginForm() {
       await login(email, password);
       router.replace(nextPath);
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Login failed");
+      setError(
+        submitError instanceof Error ? submitError.message : "Login failed",
+      );
     } finally {
       setIsSubmitting(false);
     }
   }
 
   return (
-    <section className="panel">
-      <h1>Login</h1>
+    <section className="panel login-panel">
+      <div className="login-header">
+        <h1>Welcome Back</h1>
+        <p>Sign in to your account to continue</p>
+      </div>
       <form className="form" onSubmit={handleSubmit}>
-        <label className="field">
-          <span>Email</span>
-          <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" required />
-        </label>
-        <label className="field">
-          <span>Password</span>
+        <div className="field">
+          <label>Email Address</label>
+          <input
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            type="email"
+            placeholder="name@example.com"
+            required
+          />
+        </div>
+        <div className="field">
+          <label>Password</label>
           <input
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             type="password"
+            placeholder="••••••••"
             required
           />
-        </label>
+        </div>
         {error ? <p className="error">{error}</p> : null}
-        <button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? "Signing in..." : "Login"}
+        <button type="submit" disabled={isSubmitting} className="button">
+          {isSubmitting ? "Signing in..." : "Sign In"}
         </button>
       </form>
+      <div className="login-footer">
+        <p className="muted">
+          Don't have an account? <a href="/auth/register">Create one</a>
+        </p>
+        <p className="muted">
+          <a href="/auth/forgot-password">Forgot password?</a>
+        </p>
+      </div>
     </section>
   );
 }
 
 export default function LoginPage() {
   return (
-    <div className="page">
-      <Suspense fallback={<p>Loading login...</p>}>
+    <div className="page login-page">
+      <Suspense fallback={<p className="muted">Loading login...</p>}>
         <LoginForm />
       </Suspense>
     </div>

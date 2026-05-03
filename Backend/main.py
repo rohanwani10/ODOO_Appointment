@@ -7,19 +7,13 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone, time as time_type
 from typing import Optional, List, Any, Literal
 from sqlalchemy import func, text
-import httpx
 import os
-import secrets
-import hashlib
-import hmac
-import json
 from pathlib import Path
 from uuid import uuid4
 from fastapi.responses import StreamingResponse
 import io
 import csv
 import logging
-from decimal import Decimal, ROUND_HALF_UP
 
 logger = logging.getLogger(__name__)
 
@@ -27,13 +21,11 @@ from database import engine, get_db, Base
 from models import (
     User, UserRole, RefreshToken, Organization, Service, Resource,
     ServiceResource, Appointment, BookingFormQuestion, BookingFormResponse,
-    ResourceWorkingHours, ResourceUnavailability, AuditLog, Payment,
-    AppointmentVirtualMeeting,
+    ResourceWorkingHours, ResourceUnavailability, AuditLog
 )
 from email_service import email_service
 from google_oauth_routes import router as google_oauth_router
 from schema_manager import sync_schema
-from zoom_service import zoom_service
 from auth import (
     create_access_token,
     create_refresh_token,
@@ -490,47 +482,6 @@ class UpdateStatusRequest(BaseModel):
     status: Literal["PENDING", "CONFIRMED", "CANCELLED", "RESCHEDULED", "COMPLETED", "NO_SHOW"]
 
 
-class RazorpayVerifyRequest(BaseModel):
-    razorpay_order_id: str
-    razorpay_payment_id: str
-    razorpay_signature: str
-
-
-class PaymentResponse(BaseModel):
-    id: int
-    appointment_id: int
-    provider: str
-    status: str
-    amount: float
-    currency: str
-    razorpay_order_id: Optional[str] = None
-    razorpay_payment_id: Optional[str] = None
-    verified_at: Optional[datetime] = None
-    created_at: datetime
-    updated_at: Optional[datetime] = None
-
-    class Config:
-        from_attributes = True
-
-
-class PaymentStatusResponse(BaseModel):
-    appointment_id: int
-    requires_payment: bool
-    amount: float
-    currency: str
-    is_paid: bool
-    latest_payment: Optional[PaymentResponse] = None
-
-
-class RazorpayOrderResponse(BaseModel):
-    appointment_id: int
-    key_id: str
-    order_id: str
-    amount: int
-    currency: str
-    payment: PaymentResponse
-
-
 class ServiceUpdateRequest(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
@@ -581,10 +532,6 @@ def validate_runtime_configuration() -> None:
 
     smtp_has_partial_config = bool(settings.SMTP_USERNAME) != bool(settings.SMTP_PASSWORD)
     google_has_partial_config = bool(settings.GOOGLE_CLIENT_ID) != bool(settings.GOOGLE_CLIENT_SECRET)
-    razorpay_has_partial_config = bool(settings.RAZORPAY_KEY_ID) != bool(settings.RAZORPAY_KEY_SECRET)
-    zoom_has_partial_config = (
-        len({bool(settings.ZOOM_ACCOUNT_ID), bool(settings.ZOOM_CLIENT_ID), bool(settings.ZOOM_CLIENT_SECRET)}) > 1
-    )
 
     if smtp_has_partial_config:
         logger.warning(
@@ -601,22 +548,6 @@ def validate_runtime_configuration() -> None:
         )
     elif not settings.GOOGLE_CLIENT_ID:
         logger.warning("Google OAuth is not configured; Google auth/calendar features are disabled")
-
-    if razorpay_has_partial_config:
-        logger.warning(
-            "Razorpay configuration is incomplete; payment features are disabled until both "
-            "RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET are set"
-        )
-    elif not settings.RAZORPAY_KEY_ID:
-        logger.warning("Razorpay is not configured; payment features are disabled")
-
-    if zoom_has_partial_config:
-        logger.warning(
-            "Zoom configuration is incomplete; organizer meeting-share features are disabled until "
-            "ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID, and ZOOM_CLIENT_SECRET are all set"
-        )
-    elif not settings.ZOOM_ACCOUNT_ID:
-        logger.warning("Zoom is not configured; organizer meeting-share features are disabled")
 
 @app.on_event("startup")
 def startup():
@@ -835,42 +766,6 @@ def ensure_email_delivery_available() -> None:
         )
 
 
-def ensure_zoom_delivery_available() -> None:
-    """Fail fast when Zoom or SMTP are unavailable for meeting-share actions."""
-    ensure_email_delivery_available()
-    if not zoom_service.is_configured():
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Zoom meeting sharing is not configured",
-        )
-
-
-def get_virtual_meeting_for_appointment(appointment_id: int, db: Session) -> Optional[AppointmentVirtualMeeting]:
-    return db.query(AppointmentVirtualMeeting).filter(
-        AppointmentVirtualMeeting.appointment_id == appointment_id,
-        AppointmentVirtualMeeting.provider == "ZOOM",
-    ).first()
-
-
-def serialize_virtual_meeting(
-    meeting: AppointmentVirtualMeeting,
-    *,
-    recipient_email: str,
-    reused_existing_meeting: bool,
-) -> VirtualMeetingResponse:
-    sent_at = meeting.sent_at or datetime.now(timezone.utc)
-    return VirtualMeetingResponse(
-        appointment_id=meeting.appointment_id,  # type: ignore[arg-type]
-        provider=meeting.provider,  # type: ignore[arg-type]
-        meeting_id=meeting.external_meeting_id,
-        join_url=meeting.join_url or "",
-        start_url=meeting.start_url,
-        recipient_email=recipient_email,
-        sent_at=sent_at,
-        reused_existing_meeting=reused_existing_meeting,
-    )
-
-
 def ensure_service_resource_assignment(service_id: int, resource_id: int, db: Session) -> ServiceResource:
     """Require the selected resource to be explicitly assigned to the service."""
     assignment = db.query(ServiceResource).filter(
@@ -909,23 +804,6 @@ def acquire_booking_capacity_locks(service_id: int, resource_id: int, db: Sessio
             ),
             {"lock_key": lock_key, "updated_at": updated_at},
         )
-
-
-ACTIVE_UPCOMING_APPOINTMENT_STATUSES = ("PENDING", "CONFIRMED", "RESCHEDULED")
-
-
-def build_booking_limit_message(limit: int) -> str:
-    """Return a clear per-user booking-limit message for customer-facing conflicts."""
-    if limit == 1:
-        return (
-            "This service allows only 1 active upcoming booking per customer. "
-            "Cancel, complete, or reschedule your existing booking before reserving another slot."
-        )
-
-    return (
-        f"This service allows only {limit} active upcoming bookings per customer. "
-        "Cancel, complete, or reschedule an existing booking before reserving another slot."
-    )
 
 
 def validate_appointment_slot(
@@ -1055,20 +933,17 @@ def validate_appointment_slot(
         )
 
     if customer_id is not None and service.max_bookings_per_user:
-        now_utc = datetime.now(timezone.utc)
         existing_customer_bookings = db.query(Appointment).filter(
             Appointment.service_id == service.id,
             Appointment.customer_id == customer_id,
-            Appointment.status.in_(ACTIVE_UPCOMING_APPOINTMENT_STATUSES),
-            Appointment.end_time >= now_utc,
+            Appointment.status != "CANCELLED",
         )
         if exclude_appointment_id is not None:
             existing_customer_bookings = existing_customer_bookings.filter(Appointment.id != exclude_appointment_id)
-        active_booking_count = existing_customer_bookings.count()
-        if active_booking_count >= service.max_bookings_per_user:
+        if existing_customer_bookings.count() >= service.max_bookings_per_user:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=build_booking_limit_message(service.max_bookings_per_user),
+                detail="Booking limit reached for this service",
             )
 
 
@@ -1994,19 +1869,6 @@ def admin_update_provider(
 # ==================== Phase 2: Services Endpoints ====================
 
 
-def generate_unique_shareable_link(db: Session) -> str:
-    """Generate a unique public share token for a service."""
-    for _ in range(10):
-        candidate = secrets.token_urlsafe(16)
-        exists = db.query(Service.id).filter(Service.shareable_link == candidate).first()
-        if not exists:
-            return candidate
-    raise HTTPException(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        detail="Unable to generate a unique shareable link",
-    )
-
-
 @app.get("/api/services", response_model=List[ServiceResponse])
 def list_services(db: Session = Depends(get_db)):
     """List published services."""
@@ -2053,8 +1915,6 @@ def create_service(request: ServiceCreateRequest, current_user: User = Depends(r
         advance_payment_amount=request.advance_payment_amount,
         created_by=current_user.id,
     )
-    if service.is_published and not service.shareable_link:
-        service.shareable_link = generate_unique_shareable_link(db)  # type: ignore[assignment]
     db.add(service)
     db.commit()
     db.refresh(service)
@@ -2074,8 +1934,6 @@ def update_service(service_id: int, request: ServiceUpdateRequest, current_user:
         setattr(service, key, value)
     if request.requires_advance_payment is False:
         service.advance_payment_amount = None  # type: ignore[assignment]
-    if service.is_published and not service.shareable_link:
-        service.shareable_link = generate_unique_shareable_link(db)  # type: ignore[assignment]
 
     db.commit()
     db.refresh(service)
@@ -2089,10 +1947,8 @@ def publish_service(service_id: int, current_user: User = Depends(require_role("
     if service.created_by != current_user.id and "ADMIN" not in roles:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
     service.is_published = True  # type: ignore[assignment]
-    if not service.shareable_link:
-        service.shareable_link = generate_unique_shareable_link(db)  # type: ignore[assignment]
     db.commit()
-    return {"message": "Service published", "shareable_link": service.shareable_link}
+    return {"message": "Service published"}
 
 
 @app.post("/api/services/{service_id}/unpublish")
@@ -2124,11 +1980,12 @@ def delete_service(service_id: int, current_user: User = Depends(require_role("O
 @app.post("/api/services/{service_id}/shareable-link")
 def generate_shareable_link(service_id: int, current_user: User = Depends(require_role("ORGANIZER", "ADMIN")), db: Session = Depends(get_db)):
     """Generate a shareable link for a service."""
+    import secrets as _secrets
     service = get_service_or_404(service_id, db)
     roles = get_user_roles(current_user.id, db)
     if service.created_by != current_user.id and "ADMIN" not in roles:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
-    link = generate_unique_shareable_link(db)
+    link = _secrets.token_urlsafe(16)
     service.shareable_link = link  # type: ignore[assignment]
     db.commit()
     return {"shareable_link": link}
@@ -2663,194 +2520,6 @@ def delete_form_question(service_id: int, question_id: int, current_user: User =
 # ==================== Phase 2: Appointments Endpoints ====================
 
 
-def ensure_razorpay_configured() -> None:
-    if not settings.RAZORPAY_KEY_ID or not settings.RAZORPAY_KEY_SECRET:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Razorpay payments are not configured",
-        )
-
-
-def get_appointment_or_404(appointment_id: int, db: Session) -> Appointment:
-    appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
-    if not appointment:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Appointment not found")
-    return appointment
-
-
-def get_viewable_appointment_or_404(appointment_id: int, current_user: User, db: Session) -> Appointment:
-    appointment = get_appointment_or_404(appointment_id, db)
-    roles = get_user_roles(current_user.id, db)
-    if appointment.customer_id == current_user.id:
-        return appointment
-    if "ADMIN" in roles:
-        return appointment
-    if "ORGANIZER" in roles:
-        service = db.query(Service).filter(Service.id == appointment.service_id).first()
-        if service and service.created_by == current_user.id:
-            return appointment
-    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
-
-
-def get_appointment_payment_amount(service: Service, appointment: Appointment) -> Decimal:
-    advance_amount = Decimal(str(service.advance_payment_amount or 0))
-    return (advance_amount * Decimal(int(appointment.capacity_used or 1))).quantize(
-        Decimal("0.01"),
-        rounding=ROUND_HALF_UP,
-    )
-
-
-def serialize_payment(payment: Payment) -> PaymentResponse:
-    return PaymentResponse(
-        id=payment.id,  # type: ignore[arg-type]
-        appointment_id=payment.appointment_id,  # type: ignore[arg-type]
-        provider=payment.provider,  # type: ignore[arg-type]
-        status=payment.status,  # type: ignore[arg-type]
-        amount=float(payment.amount),  # type: ignore[arg-type]
-        currency=payment.currency,  # type: ignore[arg-type]
-        razorpay_order_id=payment.razorpay_order_id,  # type: ignore[arg-type]
-        razorpay_payment_id=payment.razorpay_payment_id,  # type: ignore[arg-type]
-        verified_at=payment.verified_at,  # type: ignore[arg-type]
-        created_at=payment.created_at,  # type: ignore[arg-type]
-        updated_at=payment.updated_at,  # type: ignore[arg-type]
-    )
-
-
-def get_latest_payment_for_appointment(appointment_id: int, db: Session) -> Optional[Payment]:
-    return (
-        db.query(Payment)
-        .filter(Payment.appointment_id == appointment_id)
-        .order_by(Payment.created_at.desc(), Payment.id.desc())
-        .first()
-    )
-
-
-def build_payment_status_response(appointment: Appointment, service: Service, db: Session) -> PaymentStatusResponse:
-    latest_payment = get_latest_payment_for_appointment(appointment.id, db)
-    amount = (
-        get_appointment_payment_amount(service, appointment)
-        if service.requires_advance_payment and service.advance_payment_amount
-        else Decimal("0.00")
-    )
-    is_paid = bool(latest_payment and latest_payment.status in {"AUTHORIZED", "CAPTURED"})
-    return PaymentStatusResponse(
-        appointment_id=appointment.id,  # type: ignore[arg-type]
-        requires_payment=bool(service.requires_advance_payment),
-        amount=float(amount),
-        currency=settings.RAZORPAY_CURRENCY,
-        is_paid=is_paid,
-        latest_payment=serialize_payment(latest_payment) if latest_payment else None,
-    )
-
-
-def get_or_create_zoom_meeting_for_appointment(
-    appointment: Appointment,
-    service: Service,
-    resource: Optional[Resource],
-    db: Session,
-) -> tuple[AppointmentVirtualMeeting, bool]:
-    existing_meeting = get_virtual_meeting_for_appointment(appointment.id, db)
-    appointment_updated_at = normalize_datetime_to_utc(appointment.updated_at or appointment.created_at)
-
-    if (
-        existing_meeting
-        and existing_meeting.join_url
-        and existing_meeting.updated_at
-        and normalize_datetime_to_utc(existing_meeting.updated_at) >= appointment_updated_at
-    ):
-        return existing_meeting, True
-
-    organizer = get_user_by_id(service.created_by, db)
-    customer = get_user_by_id(appointment.customer_id, db)
-    topic = f"{service.name} appointment #{appointment.id}"
-    agenda_parts = [
-        f"Service: {service.name}",
-        f"Customer: {customer.first_name} {customer.last_name}".strip() if customer else None,
-        f"Resource: {resource.name}" if resource else None,
-        f"Notes: {appointment.notes}" if appointment.notes else None,
-    ]
-    agenda = "\n".join(part for part in agenda_parts if part)
-    meeting_payload = zoom_service.create_scheduled_meeting(
-        topic=topic,
-        start_time=normalize_datetime_to_utc(appointment.start_time),
-        end_time=normalize_datetime_to_utc(appointment.end_time),
-        agenda=agenda,
-    )
-
-    now_utc = datetime.now(timezone.utc)
-    if existing_meeting is None:
-        existing_meeting = AppointmentVirtualMeeting(
-            appointment_id=appointment.id,
-            provider="ZOOM",
-        )
-        db.add(existing_meeting)
-
-    existing_meeting.external_meeting_id = str(meeting_payload.get("id") or "")  # type: ignore[assignment]
-    existing_meeting.join_url = meeting_payload.get("join_url")  # type: ignore[assignment]
-    existing_meeting.start_url = meeting_payload.get("start_url")  # type: ignore[assignment]
-    existing_meeting.meeting_password = (
-        meeting_payload.get("password") or meeting_payload.get("encrypted_password")
-    )  # type: ignore[assignment]
-    existing_meeting.host_email = (
-        str(meeting_payload.get("host_email"))
-        if meeting_payload.get("host_email") is not None
-        else organizer.email if organizer else None
-    )  # type: ignore[assignment]
-    existing_meeting.meeting_payload = json.dumps(meeting_payload)  # type: ignore[assignment]
-    existing_meeting.updated_at = now_utc  # type: ignore[assignment]
-    db.flush()
-
-    if not existing_meeting.join_url:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Zoom did not return a join URL for the meeting",
-        )
-
-    return existing_meeting, False
-
-
-def razorpay_request(method: str, path: str, payload: Optional[dict] = None) -> dict:
-    ensure_razorpay_configured()
-    base_url = "https://api.razorpay.com/v1"
-    with httpx.Client(timeout=20.0) as client:
-        response = client.request(
-            method,
-            f"{base_url}{path}",
-            json=payload,
-            auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET),
-        )
-
-    if response.is_success:
-        return response.json()
-
-    try:
-        error_payload = response.json()
-        message = (
-            error_payload.get("error", {}).get("description")
-            or error_payload.get("error", {}).get("reason")
-            or error_payload.get("error", {}).get("code")
-            or "Razorpay request failed"
-        )
-    except Exception:
-        message = "Razorpay request failed"
-
-    raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=message)
-
-
-def verify_razorpay_signature(order_id: str, payment_id: str, signature: str) -> None:
-    ensure_razorpay_configured()
-    expected_signature = hmac.new(
-        settings.RAZORPAY_KEY_SECRET.encode("utf-8"),
-        f"{order_id}|{payment_id}".encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()
-    if not hmac.compare_digest(expected_signature, signature):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid Razorpay payment signature",
-        )
-
-
 @app.post("/api/appointments", response_model=AppointmentResponse, status_code=201)
 def create_appointment(request: AppointmentCreateRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     # Validate service
@@ -2880,7 +2549,7 @@ def create_appointment(request: AppointmentCreateRequest, current_user: User = D
         resource_id=resource.id,
         start_time=start_time,
         end_time=end_time,
-        status='PENDING' if service.requires_advance_payment else 'CONFIRMED',
+        status='CONFIRMED',
         capacity_used=request.capacity_used,
         notes=request.notes,
     )
@@ -2898,7 +2567,7 @@ def create_appointment(request: AppointmentCreateRequest, current_user: User = D
             start_time=start_time,
             end_time=end_time,
             resource_name=resource.name,
-            notes=request.notes or ""
+            notes=request.notes
         )
     except Exception as e:
         logger.warning(f"Failed to send appointment confirmation email: {str(e)}")
@@ -2926,154 +2595,20 @@ def list_appointments(current_user: User = Depends(get_current_user), db: Sessio
 @app.get("/api/appointments/{appointment_id}", response_model=AppointmentResponse)
 def get_appointment(appointment_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Get appointment details."""
-    return get_viewable_appointment_or_404(appointment_id, current_user, db)
-
-
-@app.get("/api/payments/appointments/{appointment_id}", response_model=PaymentStatusResponse)
-def get_appointment_payment_status(
-    appointment_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    appointment = get_viewable_appointment_or_404(appointment_id, current_user, db)
-    service = get_service_or_404(appointment.service_id, db)
-    return build_payment_status_response(appointment, service, db)
-
-
-@app.post("/api/payments/appointments/{appointment_id}/order", response_model=RazorpayOrderResponse)
-def create_appointment_payment_order(
-    appointment_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    appointment = get_viewable_appointment_or_404(appointment_id, current_user, db)
-    service = get_service_or_404(appointment.service_id, db)
-
-    if appointment.customer_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only the customer can initiate payment for this appointment",
-        )
-
-    if not service.requires_advance_payment or not service.advance_payment_amount:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="This appointment does not require advance payment",
-        )
-
-    latest_payment = get_latest_payment_for_appointment(appointment.id, db)
-    if latest_payment and latest_payment.status in {"AUTHORIZED", "CAPTURED"}:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="This appointment is already paid",
-        )
-
-    amount = get_appointment_payment_amount(service, appointment)
-    amount_paise = int((amount * Decimal("100")).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
-
-    db.query(Payment).filter(
-        Payment.appointment_id == appointment.id,
-        Payment.status == "CREATED",
-    ).update({Payment.status: "CANCELLED"}, synchronize_session=False)
-
-    order_data = razorpay_request(
-        "POST",
-        "/orders",
-        payload={
-            "amount": amount_paise,
-            "currency": settings.RAZORPAY_CURRENCY,
-            "receipt": f"appointment_{appointment.id}_{int(datetime.now(timezone.utc).timestamp())}",
-            "notes": {
-                "appointment_id": str(appointment.id),
-                "service_id": str(service.id),
-                "customer_id": str(appointment.customer_id),
-            },
-        },
-    )
-
-    payment = Payment(
-        appointment_id=appointment.id,
-        provider="RAZORPAY",
-        status="CREATED",
-        amount=amount,
-        currency=settings.RAZORPAY_CURRENCY,
-        razorpay_order_id=order_data.get("id"),
-        gateway_response=json.dumps(order_data),
-    )
-    db.add(payment)
-    db.commit()
-    db.refresh(payment)
-
-    return RazorpayOrderResponse(
-        appointment_id=appointment.id,  # type: ignore[arg-type]
-        key_id=settings.RAZORPAY_KEY_ID,
-        order_id=order_data["id"],
-        amount=amount_paise,
-        currency=settings.RAZORPAY_CURRENCY,
-        payment=serialize_payment(payment),
-    )
-
-
-@app.post("/api/payments/appointments/{appointment_id}/verify", response_model=PaymentStatusResponse)
-def verify_appointment_payment(
-    appointment_id: int,
-    request: RazorpayVerifyRequest,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    appointment = get_viewable_appointment_or_404(appointment_id, current_user, db)
-    if appointment.customer_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only the customer can verify payment for this appointment",
-        )
-
-    service = get_service_or_404(appointment.service_id, db)
-    if not service.requires_advance_payment or not service.advance_payment_amount:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="This appointment does not require advance payment",
-        )
-
-    payment = db.query(Payment).filter(
-        Payment.appointment_id == appointment.id,
-        Payment.razorpay_order_id == request.razorpay_order_id,
-    ).order_by(Payment.id.desc()).first()
-
-    if not payment:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Payment order not found")
-
-    verify_razorpay_signature(
-        request.razorpay_order_id,
-        request.razorpay_payment_id,
-        request.razorpay_signature,
-    )
-
-    payment_details = razorpay_request("GET", f"/payments/{request.razorpay_payment_id}")
-    gateway_status = str(payment_details.get("status") or "").lower()
-    if gateway_status == "captured":
-        next_status = "CAPTURED"
-    elif gateway_status == "authorized":
-        next_status = "AUTHORIZED"
-    else:
-        next_status = "FAILED"
-
-    payment.status = next_status  # type: ignore[assignment]
-    payment.razorpay_payment_id = request.razorpay_payment_id  # type: ignore[assignment]
-    payment.razorpay_signature = request.razorpay_signature  # type: ignore[assignment]
-    payment.gateway_response = json.dumps(payment_details)  # type: ignore[assignment]
-    payment.verified_at = datetime.now(timezone.utc)  # type: ignore[assignment]
-    payment.updated_at = datetime.now(timezone.utc)  # type: ignore[assignment]
-
-    if next_status in {"AUTHORIZED", "CAPTURED"} and appointment.status == "PENDING":
-        appointment.status = "CONFIRMED"  # type: ignore[assignment]
-        appointment.updated_at = datetime.now(timezone.utc)  # type: ignore[assignment]
-
-    db.commit()
-    db.refresh(payment)
-    db.refresh(appointment)
-
-    return build_payment_status_response(appointment, service, db)
+    appt = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+    if not appt:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Appointment not found")
+    roles = get_user_roles(current_user.id, db)
+    # Customer can see own, organizer can see their services' appointments
+    if appt.customer_id == current_user.id:
+        return appt
+    if "ORGANIZER" in roles:
+        service = db.query(Service).filter(Service.id == appt.service_id).first()
+        if service and service.created_by == current_user.id:
+            return appt
+    if "ADMIN" in roles:
+        return appt
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
 
 
 @app.put("/api/appointments/{appointment_id}/reschedule", response_model=AppointmentResponse)
@@ -3122,8 +2657,8 @@ def reschedule_appointment(appointment_id: int, request: RescheduleRequest, curr
                 service_name=service.name,
                 start_time=start_time,
                 end_time=end_time,
-                resource_name=resource.name if resource else "",
-                notes=appt.notes or ""
+                resource_name=resource.name if resource else None,
+                notes=appt.notes
             )
     except Exception as e:
         logger.warning(f"Failed to send rescheduled appointment email: {str(e)}")
@@ -3159,32 +2694,21 @@ def get_appointment_confirmation(appointment_id: int, current_user: User = Depen
     if not appt:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Appointment not found")
     service = db.query(Service).filter(Service.id == appt.service_id).first()
-    customer = db.query(User).filter(User.id == appt.customer_id).first()
     roles = get_user_roles(current_user.id, db)
     if appt.customer_id != current_user.id:  # type: ignore[operator]
         can_view_as_owner = bool(service and service.created_by == current_user.id)
         if "ADMIN" not in roles and not can_view_as_owner:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
     resource = db.query(Resource).filter(Resource.id == appt.resource_id).first() if appt.resource_id else None
-    virtual_meeting = get_virtual_meeting_for_appointment(appt.id, db)
     return {
         "appointment_id": appt.id,
         "status": appt.status,
         "service_name": service.name if service else None,
         "resource_name": resource.name if resource else None,
-        "customer_email": customer.email if customer else None,
-        "customer_name": (
-            f"{customer.first_name} {customer.last_name}".strip()
-            if customer
-            else None
-        ),
         "start_time": serialize_datetime(appt.start_time),
         "end_time": serialize_datetime(appt.end_time),
         "capacity_used": appt.capacity_used,
         "notes": appt.notes,
-        "virtual_meeting_provider": virtual_meeting.provider if virtual_meeting else None,
-        "virtual_meeting_join_url": virtual_meeting.join_url if virtual_meeting else None,
-        "virtual_meeting_start_url": virtual_meeting.start_url if virtual_meeting else None,
         "created_at": serialize_datetime(appt.created_at),
     }
 

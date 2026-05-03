@@ -4,12 +4,7 @@ import { useEffect, useState } from "react";
 import { RequireAuth } from "@/components/require-auth";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
-import type {
-  Appointment,
-  AppointmentConfirmation,
-  BookingFormResponse,
-  VirtualMeetingShare,
-} from "@/lib/types";
+import type { Appointment, AppointmentConfirmation, BookingFormResponse } from "@/lib/types";
 
 const statusOptions = ["PENDING", "CONFIRMED", "CANCELLED", "RESCHEDULED", "COMPLETED", "NO_SHOW"];
 
@@ -19,10 +14,6 @@ export default function OrganizerBookingsPage() {
   const [confirmation, setConfirmation] = useState<AppointmentConfirmation | null>(null);
   const [responses, setResponses] = useState<BookingFormResponse[]>([]);
   const [calendarEntries, setCalendarEntries] = useState<Record<string, unknown>[]>([]);
-  const [recipientEmail, setRecipientEmail] = useState("");
-  const [recipientName, setRecipientName] = useState("");
-  const [meetingShare, setMeetingShare] = useState<VirtualMeetingShare | null>(null);
-  const [isSharingMeeting, setIsSharingMeeting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -50,9 +41,6 @@ export default function OrganizerBookingsPage() {
       if (!selectedAppointmentId) {
         setConfirmation(null);
         setResponses([]);
-        setMeetingShare(null);
-        setRecipientEmail("");
-        setRecipientName("");
         return;
       }
 
@@ -65,21 +53,6 @@ export default function OrganizerBookingsPage() {
         if (active) {
           setConfirmation(confirmationData);
           setResponses(responseData);
-          setMeetingShare(
-            confirmationData.virtual_meeting_join_url
-              ? {
-                  appointment_id: confirmationData.appointment_id,
-                  provider: confirmationData.virtual_meeting_provider || "ZOOM",
-                  join_url: confirmationData.virtual_meeting_join_url,
-                  start_url: confirmationData.virtual_meeting_start_url || null,
-                  recipient_email: confirmationData.customer_email || "",
-                  sent_at: confirmationData.created_at,
-                  reused_existing_meeting: true,
-                }
-              : null,
-          );
-          setRecipientEmail(confirmationData.customer_email || "");
-          setRecipientName(confirmationData.customer_name || "");
         }
       } catch (loadError) {
         if (active) {
@@ -106,45 +79,6 @@ export default function OrganizerBookingsPage() {
       await loadAppointments();
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "Unable to update status");
-    }
-  }
-
-  async function handleShareZoomMeeting() {
-    if (!selectedAppointmentId) {
-      setError("Select an appointment first.");
-      return;
-    }
-
-    if (!recipientEmail.trim()) {
-      setError("Enter the email address that should receive the Zoom link.");
-      return;
-    }
-
-    setError(null);
-    setMessage(null);
-    setIsSharingMeeting(true);
-
-    try {
-      const response = await apiFetch<VirtualMeetingShare>(
-        `/api/appointments/${selectedAppointmentId}/zoom-share`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            recipient_email: recipientEmail.trim(),
-            recipient_name: recipientName.trim() || undefined,
-          }),
-        },
-      );
-      setMeetingShare(response);
-      setMessage(
-        response.reused_existing_meeting
-          ? `Existing Zoom link emailed to ${response.recipient_email}.`
-          : `New Zoom link emailed to ${response.recipient_email}.`,
-      );
-    } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "Unable to share Zoom meeting");
-    } finally {
-      setIsSharingMeeting(false);
     }
   }
 
@@ -209,57 +143,9 @@ export default function OrganizerBookingsPage() {
               <>
                 <p>Service: {confirmation.service_name || "-"}</p>
                 <p>Resource: {confirmation.resource_name || "-"}</p>
-                <p>Customer: {confirmation.customer_name || "-"}</p>
-                <p>Customer email: {confirmation.customer_email || "-"}</p>
                 <p>Start: {formatDateTime(confirmation.start_time)}</p>
                 <p>End: {formatDateTime(confirmation.end_time)}</p>
                 <p>Notes: {confirmation.notes || "None"}</p>
-                <h3>Share Zoom meeting</h3>
-                <label>
-                  Recipient email
-                  <input
-                    type="email"
-                    value={recipientEmail}
-                    onChange={(event) => setRecipientEmail(event.target.value)}
-                    placeholder="customer@example.com"
-                  />
-                </label>
-                <label>
-                  Recipient name
-                  <input
-                    type="text"
-                    value={recipientName}
-                    onChange={(event) => setRecipientName(event.target.value)}
-                    placeholder="Customer name"
-                  />
-                </label>
-                <button type="button" onClick={() => void handleShareZoomMeeting()} disabled={isSharingMeeting}>
-                  {isSharingMeeting ? "Sharing Zoom link..." : "Share Zoom meeting link"}
-                </button>
-                {meetingShare ? (
-                  <div className="list">
-                    <article className="item">
-                      <strong>Latest Zoom meeting</strong>
-                      <p>Provider: {meetingShare.provider}</p>
-                      <p>Recipient: {meetingShare.recipient_email}</p>
-                      <p>Sent: {formatDateTime(meetingShare.sent_at)}</p>
-                      <p>
-                        Join link:{" "}
-                        <a href={meetingShare.join_url} target="_blank" rel="noreferrer">
-                          Open Zoom join URL
-                        </a>
-                      </p>
-                      {meetingShare.start_url ? (
-                        <p>
-                          Host link:{" "}
-                          <a href={meetingShare.start_url} target="_blank" rel="noreferrer">
-                            Open Zoom host URL
-                          </a>
-                        </p>
-                      ) : null}
-                    </article>
-                  </div>
-                ) : null}
                 <h3>Booking form responses</h3>
                 <div className="list">
                   {responses.map((response) => (

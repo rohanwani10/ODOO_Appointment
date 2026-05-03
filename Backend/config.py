@@ -44,17 +44,6 @@ class Settings(BaseSettings):
         "https://www.googleapis.com/auth/calendar",
         "https://www.googleapis.com/auth/calendar.events",
     ]
-
-    # Razorpay
-    RAZORPAY_KEY_ID: str = os.getenv("RAZORPAY_KEY_ID", "")
-    RAZORPAY_KEY_SECRET: str = os.getenv("RAZORPAY_KEY_SECRET", "")
-    RAZORPAY_CURRENCY: str = os.getenv("RAZORPAY_CURRENCY", "INR")
-
-    # Zoom Server-to-Server OAuth
-    ZOOM_ACCOUNT_ID: str = os.getenv("ZOOM_ACCOUNT_ID", "")
-    ZOOM_CLIENT_ID: str = os.getenv("ZOOM_CLIENT_ID", "")
-    ZOOM_CLIENT_SECRET: str = os.getenv("ZOOM_CLIENT_SECRET", "")
-    ZOOM_USER_ID: str = os.getenv("ZOOM_USER_ID", "me")
     
     # Server
     DEBUG: bool = os.getenv("DEBUG", "True").lower() == "true"
@@ -65,7 +54,7 @@ class Settings(BaseSettings):
     APP_VERSION: str = "0.1.0"
     
     class Config:
-        env_file = str(BACKEND_DIR / ".env")
+        env_file = ".env"
         case_sensitive = True
 
 

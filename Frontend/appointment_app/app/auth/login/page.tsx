@@ -37,7 +37,10 @@ function validateEmail(input: string): string | undefined {
 
 function getFriendlyGoogleError(message: string): string {
   const normalized = message.toLowerCase();
-  if (normalized.includes("google_client_id") || normalized.includes("client id")) {
+  if (
+    normalized.includes("google_client_id") ||
+    normalized.includes("client id")
+  ) {
     return "Google sign-in is temporarily unavailable due to a configuration issue. Please use email/password for now.";
   }
   if (normalized.includes("popup") || normalized.includes("closed")) {
@@ -194,9 +197,14 @@ function LoginPageContent() {
 
         <main className="relative z-10 flex min-h-screen items-center justify-center px-4 pt-24 sm:px-6">
           <motion.div
-            initial={shouldReduceMotion ? { opacity: 1 } : { opacity: 0, y: 20 }}
+            initial={
+              shouldReduceMotion ? { opacity: 1 } : { opacity: 0, y: 20 }
+            }
             animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
-            transition={{ duration: shouldReduceMotion ? 0 : 0.5, ease: [0, 0, 0.58, 1] as const }}
+            transition={{
+              duration: shouldReduceMotion ? 0 : 0.5,
+              ease: [0, 0, 0.58, 1] as const,
+            }}
             className="w-full max-w-md"
           >
             <div className="mb-6 flex justify-center sm:mb-8">
@@ -207,21 +215,23 @@ function LoginPageContent() {
             </div>
 
             <div className="mb-6 text-center sm:mb-8">
-              <h1 className="text-gradient text-3xl font-bold tracking-tight sm:text-5xl">
+              <h1 className="section-heading sm:text-5xl text-gradient">
                 Sign In
               </h1>
-              <p className="mt-3 text-sm text-slate-200 sm:text-base">
+              <p className="section-subtitle">
                 Access your premium scheduling suite.
               </p>
             </div>
 
             <section
               aria-label="Sign in form"
-              className="glass-premium rounded-[32px] p-6 shadow-2xl sm:rounded-[40px] sm:p-8"
+              className="surface-card sm:rounded-[40px] sm:p-8"
             >
               {error && (
                 <motion.div
-                  initial={shouldReduceMotion ? { opacity: 1 } : { opacity: 0, y: -6 }}
+                  initial={
+                    shouldReduceMotion ? { opacity: 1 } : { opacity: 0, y: -6 }
+                  }
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: shouldReduceMotion ? 0 : 0.25 }}
                   className="mb-4"
@@ -233,8 +243,13 @@ function LoginPageContent() {
                       <AlertCircle className="mt-0.5 size-5 shrink-0 text-rose-200" />
                       <div className="space-y-1">
                         <p className="text-sm font-semibold">Sign-in failed</p>
-                        <p className="text-sm leading-5 text-rose-100/95">{error}</p>
-                        <p className="text-xs text-rose-100/90">Please retry. If this keeps happening, refresh the page.</p>
+                        <p className="text-sm leading-5 text-rose-100/95">
+                          {error}
+                        </p>
+                        <p className="text-xs text-rose-100/90">
+                          Please retry. If this keeps happening, refresh the
+                          page.
+                        </p>
                       </div>
                     </div>
                     <button
@@ -252,7 +267,10 @@ function LoginPageContent() {
               )}
 
               {successMessage && (
-                <div className="mb-4 rounded-2xl border border-emerald-300/45 bg-emerald-900/45 p-4" aria-live="polite">
+                <div
+                  className="mb-4 rounded-2xl border border-emerald-300/45 bg-emerald-900/45 p-4"
+                  aria-live="polite"
+                >
                   <div className="flex items-start gap-3 text-emerald-50">
                     <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-emerald-200" />
                     <p className="text-sm font-semibold">{successMessage}</p>
@@ -262,10 +280,7 @@ function LoginPageContent() {
 
               <form onSubmit={handleSubmit} className="space-y-4" noValidate>
                 <div className="space-y-2">
-                  <label
-                    htmlFor="email"
-                    className="ml-1 text-xs font-bold uppercase tracking-[0.14em] text-slate-200"
-                  >
+                  <label htmlFor="email" className="form-label">
                     Email
                   </label>
                   <div className="relative">
@@ -280,21 +295,33 @@ function LoginPageContent() {
                       onChange={(e) => {
                         setEmail(e.target.value);
                         if (fieldErrors.email) {
-                          setFieldErrors((prev) => ({ ...prev, email: validateEmail(e.target.value) }));
+                          setFieldErrors((prev) => ({
+                            ...prev,
+                            email: validateEmail(e.target.value),
+                          }));
                         }
                       }}
                       onBlur={() => {
-                        setFieldErrors((prev) => ({ ...prev, email: validateEmail(email) }));
+                        setFieldErrors((prev) => ({
+                          ...prev,
+                          email: validateEmail(email),
+                        }));
                       }}
                       aria-invalid={!!fieldErrors.email}
-                      aria-describedby={fieldErrors.email ? "email-error" : undefined}
+                      aria-describedby={
+                        fieldErrors.email ? "email-error" : undefined
+                      }
                       disabled={isLoading}
-                      className="h-12 w-full rounded-2xl border border-white/15 bg-white/10 py-3 pl-12 pr-4 text-white placeholder:text-slate-300/80 outline-none transition focus-visible:border-primary/90 focus-visible:ring-2 focus-visible:ring-primary/75 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="form-control h-12 pl-12 pr-4"
                       placeholder="name@example.com"
                     />
                   </div>
                   {fieldErrors.email ? (
-                    <p id="email-error" className="ml-1 text-sm text-rose-200" role="alert">
+                    <p
+                      id="email-error"
+                      className="ml-1 text-sm text-rose-200"
+                      role="alert"
+                    >
                       {fieldErrors.email}
                     </p>
                   ) : null}
@@ -302,10 +329,7 @@ function LoginPageContent() {
 
                 <div className="space-y-2">
                   <div className="ml-1 flex items-center justify-between">
-                    <label
-                      htmlFor="password"
-                      className="text-xs font-bold uppercase tracking-[0.14em] text-slate-200"
-                    >
+                    <label htmlFor="password" className="form-label">
                       Password
                     </label>
                     <Link
@@ -328,34 +352,50 @@ function LoginPageContent() {
                         if (fieldErrors.password) {
                           setFieldErrors((prev) => ({
                             ...prev,
-                            password: e.target.value.trim() ? undefined : "Password is required.",
+                            password: e.target.value.trim()
+                              ? undefined
+                              : "Password is required.",
                           }));
                         }
                       }}
                       onBlur={() => {
                         setFieldErrors((prev) => ({
                           ...prev,
-                          password: password.trim() ? undefined : "Password is required.",
+                          password: password.trim()
+                            ? undefined
+                            : "Password is required.",
                         }));
                       }}
                       aria-invalid={!!fieldErrors.password}
-                      aria-describedby={fieldErrors.password ? "password-error" : undefined}
+                      aria-describedby={
+                        fieldErrors.password ? "password-error" : undefined
+                      }
                       disabled={isLoading}
-                      className="h-12 w-full rounded-2xl border border-white/15 bg-white/10 py-3 pl-12 pr-12 text-white placeholder:text-slate-300/80 outline-none transition focus-visible:border-primary/90 focus-visible:ring-2 focus-visible:ring-primary/75 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="form-control h-12 pl-12 pr-12"
                       placeholder="••••••••"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword((prev) => !prev)}
                       disabled={isLoading}
-                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      aria-label={
+                        showPassword ? "Hide password" : "Show password"
+                      }
                       className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-slate-200 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/80 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                      {showPassword ? (
+                        <EyeOff className="size-4" />
+                      ) : (
+                        <Eye className="size-4" />
+                      )}
                     </button>
                   </div>
                   {fieldErrors.password ? (
-                    <p id="password-error" className="ml-1 text-sm text-rose-200" role="alert">
+                    <p
+                      id="password-error"
+                      className="ml-1 text-sm text-rose-200"
+                      role="alert"
+                    >
                       {fieldErrors.password}
                     </p>
                   ) : null}
@@ -364,7 +404,7 @@ function LoginPageContent() {
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="group relative mt-2 h-12 w-full overflow-hidden rounded-2xl bg-white font-bold text-slate-950 transition hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+                  className="button-primary w-full mt-2 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <span className="relative z-10 flex items-center justify-center gap-2">
                     {isLoading ? (
@@ -380,7 +420,10 @@ function LoginPageContent() {
                     )}
                   </span>
                   {isLoading ? (
-                    <span className="absolute inset-x-0 bottom-0 h-1 animate-pulse bg-slate-900/20" aria-hidden="true" />
+                    <span
+                      className="absolute inset-x-0 bottom-0 h-1 animate-pulse bg-slate-900/20"
+                      aria-hidden="true"
+                    />
                   ) : null}
                 </button>
               </form>
@@ -392,7 +435,7 @@ function LoginPageContent() {
                     router.replace(nextPath);
                   }}
                   onError={(msg) => setError(getFriendlyGoogleError(msg))}
-                  className="h-12 w-full rounded-2xl border border-white/20 bg-white/90 px-4 py-3 text-sm font-semibold text-slate-900 transition hover:bg-white"
+                  className="button-secondary w-full"
                 />
               </div>
 
@@ -407,10 +450,7 @@ function LoginPageContent() {
                 </div>
               </div>
 
-              <Link
-                href="/auth/register"
-                className="inline-flex w-full items-center justify-center rounded-2xl border border-white/20 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/80 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
-              >
+              <Link href="/auth/register" className="button-ghost w-full">
                 Create an account
               </Link>
             </section>
