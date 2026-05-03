@@ -211,20 +211,20 @@ export default function PricingPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.12),transparent_38%),linear-gradient(180deg,#f8fafc_0%,#eef2ff_32%,#ffffff_100%)] text-slate-950 dark:bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.14),transparent_30%),linear-gradient(180deg,#020617_0%,#0f172a_100%)] dark:text-white">
+    <div className="min-h-screen bg-background text-foreground">
       <Navigation />
 
       <main className="pt-28 sm:pt-32">
         <section className="mx-auto max-w-7xl px-4 pb-16 sm:px-6 sm:pb-20 lg:px-8">
           <div className="mx-auto max-w-3xl text-center">
-            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white/80 px-4 py-1.5 text-sm font-medium text-slate-700 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/5 dark:text-slate-200">
-              <Sparkles className="size-4 text-sky-500" />
+            <div className="glass inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-primary shadow-2xl">
+              <Sparkles className="size-4 text-primary" />
               Pricing built for teams that want clarity
             </div>
-            <h1 className="text-balance text-5xl font-semibold tracking-tight text-slate-950 sm:text-6xl lg:text-7xl dark:text-white">
+            <h1 className="section-heading sm:text-6xl">
               Simple, transparent pricing.
             </h1>
-            <p className="mx-auto mt-6 max-w-2xl text-pretty text-lg leading-8 text-slate-600 sm:text-xl dark:text-slate-300">
+            <p className="section-subtitle mx-auto max-w-2xl">
               Choose a plan that fits your workflow today and move up as your
               scheduling needs grow. No hidden fees, no confusing usage math.
             </p>
@@ -237,8 +237,8 @@ export default function PricingPage() {
         </section>
 
         <section className="mx-auto max-w-7xl px-4 pb-16 sm:px-6 sm:pb-24 lg:px-8">
-          <div className="rounded-[2rem] border border-slate-200 bg-white/80 p-5 shadow-[0_20px_80px_rgba(15,23,42,0.08)] backdrop-blur dark:border-white/10 dark:bg-white/[0.04]">
-            <div className="flex items-center justify-between gap-4 border-b border-slate-200 pb-4 dark:border-white/10">
+          <div className="surface-card bg-slate-950/70 p-5 dark:bg-white/[0.04]">
+            <div className="flex items-center justify-between gap-4 border-b border-white/10 pb-4">
               <div>
                 <p className="text-sm font-semibold uppercase tracking-[0.25em] text-slate-500 dark:text-slate-400">
                   Feature comparison

@@ -1,6 +1,12 @@
 import { getAccessToken, getRefreshToken, setTokens, removeTokens } from './auth';
 
-const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '');
+const rawApiBaseUrl = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '');
+const API_BASE_URL = (() => {
+  if (typeof window !== 'undefined' && rawApiBaseUrl.startsWith('http:') && window.location.protocol === 'https:') {
+    return '';
+  }
+  return rawApiBaseUrl;
+})();
 
 type FetchOptions = RequestInit & {
   params?: Record<string, string>;

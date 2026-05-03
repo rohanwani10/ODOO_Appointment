@@ -6,7 +6,13 @@ import { useParams, useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { formatDate, formatTime, toDateInputValue } from "@/lib/format";
 import { useAuth } from "@/components/auth-provider";
-import type { Appointment, AvailableSlot, FormQuestion, Resource, Service } from "@/lib/types";
+import type {
+  Appointment,
+  AvailableSlot,
+  FormQuestion,
+  Resource,
+  Service,
+} from "@/lib/types";
 
 function parseOptions(input?: string | null) {
   if (!input) {
@@ -25,7 +31,10 @@ function parseOptions(input?: string | null) {
       }
     }
   } catch {
-    return input.split(",").map((item) => item.trim()).filter(Boolean);
+    return input
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
   }
 
   return [];
@@ -41,8 +50,12 @@ export default function ServicePage() {
   const [resources, setResources] = useState<Resource[]>([]);
   const [questions, setQuestions] = useState<FormQuestion[]>([]);
   const [slots, setSlots] = useState<AvailableSlot[]>([]);
-  const [selectedDate, setSelectedDate] = useState(toDateInputValue(new Date(Date.now() + 86400000)));
+  const [selectedDate, setSelectedDate] = useState(
+    toDateInputValue(new Date(Date.now() + 86400000)),
+  );
   const [selectedSlot, setSelectedSlot] = useState<AvailableSlot | null>(null);
+  const [currentSlotsPage, setCurrentSlotsPage] = useState(1);
+  const slotsPerPage = 5;
   const [notes, setNotes] = useState("");
   const [answers, setAnswers] = useState<Record<number, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -51,9 +64,16 @@ export default function ServicePage() {
   const [isBooking, setIsBooking] = useState(false);
 
   const selectedResource = useMemo(
-    () => resources.find((resource) => resource.id === selectedSlot?.resource_id) ?? null,
+    () =>
+      resources.find((resource) => resource.id === selectedSlot?.resource_id) ??
+      null,
     [resources, selectedSlot],
   );
+
+  const totalSlotsPages = Math.ceil(slots.length / slotsPerPage);
+  const startSlotsIdx = (currentSlotsPage - 1) * slotsPerPage;
+  const endSlotsIdx = startSlotsIdx + slotsPerPage;
+  const paginatedSlots = slots.slice(startSlotsIdx, endSlotsIdx);
 
   useEffect(() => {
     let active = true;
@@ -62,8 +82,13 @@ export default function ServicePage() {
       try {
         const [serviceData, resourceData, questionData] = await Promise.all([
           apiFetch<Service>(`/api/services/${serviceId}`, { skipAuth: true }),
-          apiFetch<Resource[]>(`/api/services/${serviceId}/resources`, { skipAuth: true }),
-          apiFetch<FormQuestion[]>(`/api/services/${serviceId}/form-questions`, { skipAuth: true }),
+          apiFetch<Resource[]>(`/api/services/${serviceId}/resources`, {
+            skipAuth: true,
+          }),
+          apiFetch<FormQuestion[]>(
+            `/api/services/${serviceId}/form-questions`,
+            { skipAuth: true },
+          ),
         ]);
 
         if (active) {
@@ -73,7 +98,11 @@ export default function ServicePage() {
         }
       } catch (loadError) {
         if (active) {
-          setError(loadError instanceof Error ? loadError.message : "Unable to load service");
+          setError(
+            loadError instanceof Error
+              ? loadError.message
+              : "Unable to load service",
+          );
         }
       } finally {
         if (active) {
@@ -109,11 +138,17 @@ export default function ServicePage() {
         if (active) {
           setSlots(data);
           setSelectedSlot(null);
+          setCurrentSlotsPage(1);
         }
       } catch (loadError) {
         if (active) {
-          setError(loadError instanceof Error ? loadError.message : "Unable to load slots");
+          setError(
+            loadError instanceof Error
+              ? loadError.message
+              : "Unable to load slots",
+          );
           setSlots([]);
+          setCurrentSlotsPage(1);
         }
       } finally {
         if (active) {
@@ -135,12 +170,15 @@ export default function ServicePage() {
     }
 
     if (!isAuthenticated) {
-      router.push(`/auth/login?next=${encodeURIComponent(`/services/${serviceId}`)}`);
+      router.push(
+        `/auth/login?next=${encodeURIComponent(`/services/${serviceId}`)}`,
+      );
       return;
     }
 
     const missingRequired = questions.some(
-      (question) => question.is_required && !(answers[question.id] || "").trim(),
+      (question) =>
+        question.is_required && !(answers[question.id] || "").trim(),
     );
 
     if (missingRequired) {
@@ -180,7 +218,9 @@ export default function ServicePage() {
 
       router.push(`/appointments/${appointment.id}`);
     } catch (bookingError) {
-      setError(bookingError instanceof Error ? bookingError.message : "Booking failed");
+      setError(
+        bookingError instanceof Error ? bookingError.message : "Booking failed",
+      );
     } finally {
       setIsBooking(false);
     }
@@ -200,7 +240,8 @@ export default function ServicePage() {
         <h1>{service.name}</h1>
         <p>{service.description || "No description provided."}</p>
         <p>
-          Duration: {service.duration_minutes} minutes | Capacity: {service.capacity}
+          Duration: {service.duration_minutes} minutes | Capacity:{" "}
+          {service.capacity}
         </p>
         {service.requires_advance_payment ? (
           <p>Advance payment required: {service.advance_payment_amount}</p>
@@ -215,23 +256,65 @@ export default function ServicePage() {
           <h2>Availability</h2>
           <label className="field">
             <span>Date</span>
-            <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} />
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(event) => setSelectedDate(event.target.value)}
+            />
           </label>
-          {isLoadingSlots ? <p>Loading slots...</p> : null}
+          {isLoadingSlots ? (
+            <p className="muted">Loading available slots...</p>
+          ) : slots.length === 0 ? (
+            <p className="muted">No available slots for this date.</p>
+          ) : (
+            <>
+              <p
+                className="muted"
+                style={{ fontSize: "13px", marginBottom: "12px" }}
+              >
+                {slots.length} slot{slots.length !== 1 ? "s" : ""} available
+              </p>
+            </>
+          )}
           <div className="list">
-            {slots.map((slot) => (
+            {paginatedSlots.map((slot) => (
               <button
                 key={`${slot.resource_id}-${slot.start_time}`}
                 type="button"
-                className="item"
+                className={`item ${selectedSlot?.resource_id === slot.resource_id && selectedSlot?.start_time === slot.start_time ? "selected" : ""}`}
                 onClick={() => setSelectedSlot(slot)}
               >
-                <strong>{formatTime(slot.start_time)} to {formatTime(slot.end_time)}</strong>
+                <strong>
+                  {formatTime(slot.start_time)} to {formatTime(slot.end_time)}
+                </strong>
                 <p>{slot.resource_name}</p>
-                <p>{slot.available_capacity} available</p>
+                <p className="muted">{slot.available_capacity} available</p>
               </button>
             ))}
           </div>
+          {totalSlotsPages > 1 ? (
+            <div className="pagination">
+              <button
+                onClick={() => setCurrentSlotsPage((p) => Math.max(1, p - 1))}
+                disabled={currentSlotsPage === 1}
+                className="pagination-button"
+              >
+                Previous
+              </button>
+              <span className="pagination-info">
+                Page {currentSlotsPage} of {totalSlotsPages}
+              </span>
+              <button
+                onClick={() =>
+                  setCurrentSlotsPage((p) => Math.min(totalSlotsPages, p + 1))
+                }
+                disabled={currentSlotsPage === totalSlotsPages}
+                className="pagination-button"
+              >
+                Next
+              </button>
+            </div>
+          ) : null}
         </div>
 
         <div className="panel">
@@ -242,7 +325,10 @@ export default function ServicePage() {
               ? `${formatDate(selectedSlot.start_time)} ${formatTime(selectedSlot.start_time)}`
               : "None"}
           </p>
-          <p>Resource: {selectedResource?.name || selectedSlot?.resource_name || "None"}</p>
+          <p>
+            Resource:{" "}
+            {selectedResource?.name || selectedSlot?.resource_name || "None"}
+          </p>
 
           <div className="form">
             {questions.map((question) => {
@@ -256,14 +342,20 @@ export default function ServicePage() {
                     <textarea
                       value={answers[question.id] || ""}
                       onChange={(event) =>
-                        setAnswers((current) => ({ ...current, [question.id]: event.target.value }))
+                        setAnswers((current) => ({
+                          ...current,
+                          [question.id]: event.target.value,
+                        }))
                       }
                     />
                   ) : question.field_type === "SELECT" ? (
                     <select
                       value={answers[question.id] || ""}
                       onChange={(event) =>
-                        setAnswers((current) => ({ ...current, [question.id]: event.target.value }))
+                        setAnswers((current) => ({
+                          ...current,
+                          [question.id]: event.target.value,
+                        }))
                       }
                     >
                       <option value="">Select an option</option>
@@ -277,7 +369,10 @@ export default function ServicePage() {
                     <select
                       value={answers[question.id] || ""}
                       onChange={(event) =>
-                        setAnswers((current) => ({ ...current, [question.id]: event.target.value }))
+                        setAnswers((current) => ({
+                          ...current,
+                          [question.id]: event.target.value,
+                        }))
                       }
                     >
                       <option value="">Select</option>
@@ -297,7 +392,10 @@ export default function ServicePage() {
                       }
                       value={answers[question.id] || ""}
                       onChange={(event) =>
-                        setAnswers((current) => ({ ...current, [question.id]: event.target.value }))
+                        setAnswers((current) => ({
+                          ...current,
+                          [question.id]: event.target.value,
+                        }))
                       }
                     />
                   )}
@@ -307,13 +405,25 @@ export default function ServicePage() {
 
             <label className="field">
               <span>Notes</span>
-              <textarea value={notes} onChange={(event) => setNotes(event.target.value)} />
+              <textarea
+                value={notes}
+                onChange={(event) => setNotes(event.target.value)}
+              />
             </label>
           </div>
 
           {error ? <p className="error">{error}</p> : null}
-          <button type="button" disabled={!selectedSlot || isBooking} onClick={() => void handleBook()}>
-            {isBooking ? "Booking..." : isAuthenticated ? "Book appointment" : "Login to book"}
+          <button
+            type="button"
+            disabled={!selectedSlot || isBooking}
+            onClick={() => void handleBook()}
+            className="button"
+          >
+            {isBooking
+              ? "Booking..."
+              : isAuthenticated
+                ? "Book appointment"
+                : "Login to book"}
           </button>
         </div>
       </section>

@@ -46,76 +46,135 @@
 }
 
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.623 0.214 259.815);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.623 0.214 259.815);
-  --chart-1: oklch(0.646 0.222 41.116);
+  --radius: 0.75rem;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 16px;
+  --space-4: 32px;
+  --font-xxs: 10px;
+  --font-xs: 12px;
+  --font-sm: 14px;
+  --font-base: 15px;
+  --font-lg: 16px;
+  --font-xl: 20px;
+  --font-2xl: 24px;
+  --font-3xl: 28px;
+  --background: oklch(0.08 0.03 245);
+  --foreground: oklch(0.97 0.02 255);
+  --muted: oklch(0.7 0.02 250);
+  --card: oklch(0.12 0.02 250 / 0.64);
+  --card-foreground: oklch(0.97 0.02 255);
+  --popover: oklch(0.14 0.02 250);
+  --popover-foreground: oklch(0.97 0.02 255);
+  --primary: oklch(0.64 0.24 258);
+  --primary-foreground: oklch(0.99 0.03 240);
+  --secondary: oklch(0.2 0.03 250);
+  --secondary-foreground: oklch(0.99 0.03 240);
+  --muted-foreground: oklch(0.65 0.02 250);
+  --accent: oklch(0.35 0.1 45);
+  --accent-foreground: oklch(0.95 0.02 250);
+  --destructive: oklch(0.55 0.22 27.5);
+  --border: rgba(255, 255, 255, 0.08);
+  --input: rgba(255, 255, 255, 0.06);
+  --ring: rgba(242, 169, 86, 0.24);
+  --chart-1: oklch(0.64 0.22 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.623 0.214 259.815);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar: oklch(0.06 0.01 260);
+  --sidebar-foreground: oklch(0.97 0.02 255);
+  --sidebar-primary: oklch(0.64 0.24 258);
+  --sidebar-primary-foreground: oklch(0.99 0.03 240);
+  --sidebar-accent: oklch(0.2 0.05 250 / 0.2);
+  --sidebar-accent-foreground: oklch(0.99 0.03 240);
+  --sidebar-border: rgba(255, 255, 255, 0.06);
+  --sidebar-ring: rgba(242, 169, 86, 0.18);
 }
 
 .dark {
-  --background: oklch(0.08 0.01 260); /* Deeper midnight blue */
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.12 0.02 260 / 0.5); /* Glassy card */
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.14 0.02 260);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.7 0.18 250); /* Softer indigo */
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.2 0.03 260);
-  --secondary-foreground: oklch(0.985 0 0);
+  --background: oklch(0.07 0.025 246);
+  --foreground: oklch(0.97 0.02 255);
+  --card: oklch(0.12 0.02 250 / 0.54);
+  --card-foreground: oklch(0.97 0.02 255);
+  --popover: oklch(0.14 0.02 250);
+  --popover-foreground: oklch(0.97 0.02 255);
+  --primary: oklch(0.7 0.18 250);
+  --primary-foreground: oklch(0.99 0.03 240);
+  --secondary: oklch(0.18 0.03 250);
+  --secondary-foreground: oklch(0.99 0.03 240);
   --muted: oklch(0.18 0.02 260);
   --muted-foreground: oklch(0.7 0.02 260);
   --accent: oklch(0.2 0.05 250 / 0.3);
-  --accent-foreground: oklch(0.985 0 0);
+  --accent-foreground: oklch(0.99 0.03 240);
   --destructive: oklch(0.6 0.2 25);
-  --border: oklch(1 0 0 / 8%);
-  --input: oklch(1 0 0 / 12%);
-  --ring: oklch(0.7 0.18 250);
-  --sidebar: oklch(0.06 0.01 260);
-  --sidebar-foreground: oklch(0.985 0 0);
+  --border: rgba(255, 255, 255, 0.08);
+  --input: rgba(255, 255, 255, 0.08);
+  --ring: rgba(242, 169, 86, 0.28);
+  --sidebar: oklch(0.05 0.01 250);
+  --sidebar-foreground: oklch(0.99 0.03 240);
   --sidebar-primary: oklch(0.7 0.18 250);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-primary-foreground: oklch(0.99 0.03 240);
   --sidebar-accent: oklch(0.2 0.05 250 / 0.2);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 6%);
-  --sidebar-ring: oklch(0.7 0.18 250);
+  --sidebar-accent-foreground: oklch(0.99 0.03 240);
+  --sidebar-border: rgba(255, 255, 255, 0.06);
+  --sidebar-ring: rgba(242, 169, 86, 0.18);
 }
 
 @layer components {
   .glass {
     @apply border border-white/10 bg-white/5 backdrop-blur-xl;
   }
-  
+
   .glass-premium {
-    @apply border border-white/[0.08] bg-[linear-gradient(135deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] backdrop-blur-2xl shadow-2xl;
+    @apply border border-white/[0.08] bg-[linear-gradient(135deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02))] backdrop-blur-2xl shadow-2xl;
+  }
+
+  .brand-shell {
+    @apply rounded-[28px] border border-white/10 bg-slate-950/80 px-6 py-5 shadow-2xl;
+  }
+
+  .surface-card {
+    @apply rounded-[32px] border border-white/10 bg-slate-950/75 shadow-2xl backdrop-blur-xl;
+    padding: 1.25rem;
+  }
+
+  .surface-card-compact {
+    @apply rounded-[24px] border border-white/10 bg-slate-950/70;
+    padding: 1rem;
+  }
+
+  .form-label {
+    @apply mb-2 block text-sm font-medium text-slate-300;
+  }
+
+  .form-control {
+    @apply w-full rounded-[20px] border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white outline-none transition duration-200 ease-in-out placeholder:text-slate-500;
+  }
+
+  .button-primary {
+    @apply inline-flex items-center justify-center rounded-full bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition duration-200 ease-in-out hover:bg-primary/90;
+  }
+
+  .button-secondary {
+    @apply inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-white transition duration-200 ease-in-out hover:bg-white/10;
+  }
+
+  .button-ghost {
+    @apply inline-flex items-center justify-center rounded-full px-5 py-3 text-sm font-semibold text-slate-300 transition duration-200 ease-in-out hover:text-white hover:bg-white/5;
+  }
+
+  .badge-pill {
+    @apply inline-flex items-center justify-center rounded-full bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.25em] text-slate-400;
+  }
+
+  .section-heading {
+    @apply text-3xl font-semibold tracking-tight text-white;
+    line-height: 1.05;
+  }
+
+  .section-subtitle {
+    @apply mt-3 max-w-2xl text-sm leading-6 text-slate-400;
   }
 
   .text-gradient {
@@ -124,7 +183,7 @@
 
   .bg-dashboard-grid {
     background-size: 40px 40px;
-    background-image: 
+    background-image:
       linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
       linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
   }
@@ -132,11 +191,81 @@
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    box-sizing: border-box;
+  }
+
+  html {
+    font-family: var(--font-sans);
+    font-size: 14px;
+    color-scheme: dark;
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
+    min-height: 100vh;
+    background-image: radial-gradient(circle at top left, rgba(242, 169, 86, 0.08), transparent 22%),
+      radial-gradient(circle at bottom right, rgba(56, 189, 248, 0.08), transparent 20%),
+      linear-gradient(180deg, #04060d 0%, #0c1222 30%, #05090f 100%);
+    background-attachment: fixed;
+    font-feature-settings: "cv02" 1, "cv05" 1, "ss01" 1;
+  }
+
+  ::selection {
+    background: rgba(242, 169, 86, 0.22);
+    color: #ffffff;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    margin: 0;
+    letter-spacing: -0.03em;
+  }
+
+  p,
+  label,
+  button,
+  input,
+  select,
+  textarea {
+    color: var(--foreground);
+  }
+
+  small,
+  .text-10 {
+    font-size: 10px;
+    line-height: 1.4;
+  }
+
+  .text-12 {
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  .text-14 {
+    font-size: 14px;
+    line-height: 1.6;
+  }
+}
+
+@layer utilities {
+  .space-4 {
+    padding: 4px !important;
+  }
+
+  .space-8 {
+    padding: 8px !important;
+  }
+
+  .space-16 {
+    padding: 16px !important;
+  }
+
+  .space-32 {
+    padding: 32px !important;
   }
 }
 

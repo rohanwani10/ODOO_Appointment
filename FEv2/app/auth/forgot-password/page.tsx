@@ -16,14 +16,19 @@ export default function ForgotPasswordPage() {
     setIsSubmitting(true);
 
     try {
-      const response = await apiFetch<{ message: string }>("/api/auth/forgot-password", {
-        method: "POST",
-        skipAuth: true,
-        body: JSON.stringify({ email }),
-      });
+      const response = await apiFetch<{ message: string }>(
+        "/api/auth/forgot-password",
+        {
+          method: "POST",
+          skipAuth: true,
+          body: JSON.stringify({ email }),
+        },
+      );
       setMessage(response.message);
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Request failed");
+      setError(
+        submitError instanceof Error ? submitError.message : "Request failed",
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -36,11 +41,16 @@ export default function ForgotPasswordPage() {
         <form className="form" onSubmit={handleSubmit}>
           <label className="field">
             <span>Email</span>
-            <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
+            <input
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              required
+            />
           </label>
           {message ? <p className="success">{message}</p> : null}
           {error ? <p className="error">{error}</p> : null}
-          <button type="submit" disabled={isSubmitting}>
+          <button type="submit" disabled={isSubmitting} className="button">
             {isSubmitting ? "Sending..." : "Send reset link"}
           </button>
         </form>

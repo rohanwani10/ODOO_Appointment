@@ -16,14 +16,21 @@ export default function VerifyOtpPage() {
     setError(null);
     setIsSending(true);
     try {
-      const response = await apiFetch<{ message: string }>("/api/auth/send-otp", {
-        method: "POST",
-        skipAuth: true,
-        body: JSON.stringify({ email }),
-      });
+      const response = await apiFetch<{ message: string }>(
+        "/api/auth/send-otp",
+        {
+          method: "POST",
+          skipAuth: true,
+          body: JSON.stringify({ email }),
+        },
+      );
       setMessage(response.message);
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Unable to send OTP");
+      setError(
+        submitError instanceof Error
+          ? submitError.message
+          : "Unable to send OTP",
+      );
     } finally {
       setIsSending(false);
     }
@@ -35,14 +42,21 @@ export default function VerifyOtpPage() {
     setError(null);
     setIsVerifying(true);
     try {
-      const response = await apiFetch<{ message: string }>("/api/auth/verify-otp", {
-        method: "POST",
-        skipAuth: true,
-        body: JSON.stringify({ email, otp }),
-      });
+      const response = await apiFetch<{ message: string }>(
+        "/api/auth/verify-otp",
+        {
+          method: "POST",
+          skipAuth: true,
+          body: JSON.stringify({ email, otp }),
+        },
+      );
       setMessage(response.message);
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Unable to verify OTP");
+      setError(
+        submitError instanceof Error
+          ? submitError.message
+          : "Unable to verify OTP",
+      );
     } finally {
       setIsVerifying(false);
     }
@@ -55,20 +69,38 @@ export default function VerifyOtpPage() {
         <div className="form">
           <label className="field">
             <span>Email</span>
-            <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
+            <input
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              required
+            />
           </label>
-          <button type="button" onClick={() => void handleSendOtp()} disabled={isSending || !email}>
+          <button
+            type="button"
+            onClick={() => void handleSendOtp()}
+            disabled={isSending || !email}
+            className="button"
+          >
             {isSending ? "Sending OTP..." : "Send OTP"}
           </button>
         </div>
         <form className="form" onSubmit={handleVerify}>
           <label className="field">
             <span>OTP</span>
-            <input value={otp} onChange={(event) => setOtp(event.target.value)} required />
+            <input
+              value={otp}
+              onChange={(event) => setOtp(event.target.value)}
+              required
+            />
           </label>
           {message ? <p className="success">{message}</p> : null}
           {error ? <p className="error">{error}</p> : null}
-          <button type="submit" disabled={isVerifying || !email || !otp}>
+          <button
+            type="submit"
+            disabled={isVerifying || !email || !otp}
+            className="button"
+          >
             {isVerifying ? "Verifying..." : "Verify OTP"}
           </button>
         </form>

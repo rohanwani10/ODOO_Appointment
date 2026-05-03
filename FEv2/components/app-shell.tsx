@@ -48,10 +48,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <Link href="/" className="brand">
             FEv2
           </Link>
-          <p className="subtle">Clean frontend scaffold with RBAC first.</p>
+          <p className="subtle">Appointment scheduling system</p>
         </div>
         <div className="header-right">
-          {user ? <span>{user.first_name} {user.last_name} ({user.roles.join(", ")})</span> : null}
+          {user ? (
+            <span style={{ fontSize: "14px", fontWeight: "500" }}>
+              {user.first_name} {user.last_name}
+            </span>
+          ) : null}
           {isAuthenticated ? (
             <button type="button" onClick={() => void logout()}>
               Logout
