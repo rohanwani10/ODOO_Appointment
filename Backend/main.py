@@ -221,8 +221,10 @@ class ServiceCreateRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_advance_payment(self) -> "ServiceCreateRequest":
-        if self.requires_advance_payment and self.advance_payment_amount is None:
-            raise ValueError("advance_payment_amount is required when advance payment is enabled")
+        if self.requires_advance_payment and (
+            self.advance_payment_amount is None or self.advance_payment_amount <= 0
+        ):
+            raise ValueError("advance_payment_amount must be greater than 0 when advance payment is enabled")
         if not self.requires_advance_payment and self.advance_payment_amount not in (None, 0, 0.0):
             raise ValueError("advance_payment_amount must be omitted unless advance payment is enabled")
         return self
@@ -494,6 +496,10 @@ class ServiceUpdateRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_advance_payment(self) -> "ServiceUpdateRequest":
+        if self.requires_advance_payment is True and (
+            self.advance_payment_amount is None or self.advance_payment_amount <= 0
+        ):
+            raise ValueError("advance_payment_amount must be greater than 0 when advance payment is enabled")
         if self.requires_advance_payment is False and self.advance_payment_amount not in (None, 0, 0.0):
             raise ValueError("advance_payment_amount must be omitted unless advance payment is enabled")
         return self

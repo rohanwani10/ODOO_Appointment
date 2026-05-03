@@ -5,11 +5,14 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { formatDate, formatTime, toDateInputValue } from "@/lib/format";
+import { loadRazorpayScript } from "@/lib/razorpay";
 import { useAuth } from "@/components/auth-provider";
 import type {
   Appointment,
   AvailableSlot,
   FormQuestion,
+  PaymentStatus,
+  RazorpayOrderResponse,
   Resource,
   Service,
 } from "@/lib/types";
@@ -43,7 +46,7 @@ function parseOptions(input?: string | null) {
 export default function ServicePage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const serviceId = Number(params.id);
 
   const [service, setService] = useState<Service | null>(null);
@@ -214,6 +217,81 @@ export default function ServicePage() {
           method: "POST",
           body: JSON.stringify({ responses }),
         });
+      }
+
+      if (service.requires_advance_payment) {
+        if (
+          service.advance_payment_amount == null ||
+          !Number.isFinite(service.advance_payment_amount) ||
+          service.advance_payment_amount <= 0
+        ) {
+          router.push(`/appointments/${appointment.id}?payment=failed`);
+          return;
+        }
+
+        const scriptLoaded = await loadRazorpayScript();
+        const RazorpayCheckout = window.Razorpay;
+        if (!scriptLoaded || !RazorpayCheckout) {
+          router.push(`/appointments/${appointment.id}?payment=failed`);
+          return;
+        }
+
+        const order = await apiFetch<RazorpayOrderResponse>(
+          `/api/payments/appointments/${appointment.id}/order`,
+          {
+            method: "POST",
+          },
+        );
+
+        const paymentOutcome = await new Promise<"success" | "pending" | "failed">((resolve) => {
+          const razorpay = new RazorpayCheckout({
+            key: order.key_id,
+            amount: order.amount,
+            currency: order.currency,
+            name: service.name,
+            description: "Advance payment for appointment booking",
+            order_id: order.order_id,
+            prefill: {
+              name: user ? `${user.first_name} ${user.last_name}`.trim() : "",
+              email: user?.email || "",
+              contact: user?.phone || "",
+            },
+            notes: {
+              appointment_id: String(appointment.id),
+              service_id: String(service.id),
+            },
+            handler: async (response: Record<string, string>) => {
+              try {
+                await apiFetch<PaymentStatus>(
+                  `/api/payments/appointments/${appointment.id}/verify`,
+                  {
+                    method: "POST",
+                    body: JSON.stringify({
+                      razorpay_order_id: response.razorpay_order_id,
+                      razorpay_payment_id: response.razorpay_payment_id,
+                      razorpay_signature: response.razorpay_signature,
+                    }),
+                  },
+                );
+                resolve("success");
+              } catch {
+                resolve("failed");
+              }
+            },
+            modal: {
+              ondismiss: () => resolve("pending"),
+            },
+            theme: {
+              color: "#0f172a",
+            },
+          });
+
+          razorpay.on("payment.failed", () => resolve("failed"));
+          razorpay.open();
+        });
+
+        router.push(`/appointments/${appointment.id}?payment=${paymentOutcome}`);
+        return;
       }
 
       router.push(`/appointments/${appointment.id}`);

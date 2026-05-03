@@ -120,6 +120,38 @@ export interface Appointment {
   updated_at?: string | null;
 }
 
+export interface PaymentRecord {
+  id: number;
+  appointment_id: number;
+  provider: string;
+  status: "CREATED" | "AUTHORIZED" | "CAPTURED" | "FAILED" | "CANCELLED";
+  amount: number;
+  currency: string;
+  razorpay_order_id?: string | null;
+  razorpay_payment_id?: string | null;
+  verified_at?: string | null;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+export interface PaymentStatus {
+  appointment_id: number;
+  requires_payment: boolean;
+  amount: number;
+  currency: string;
+  is_paid: boolean;
+  latest_payment?: PaymentRecord | null;
+}
+
+export interface RazorpayOrderResponse {
+  appointment_id: number;
+  key_id: string;
+  order_id: string;
+  amount: number;
+  currency: string;
+  payment: PaymentRecord;
+}
+
 export interface AppointmentConfirmation {
   appointment_id: number;
   status: string;
