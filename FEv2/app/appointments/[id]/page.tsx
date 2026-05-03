@@ -14,6 +14,16 @@ import type {
   BookingFormResponse,
 } from "@/lib/types";
 
+interface VirtualMeeting {
+  appointment_id: number;
+  provider: string;
+  meeting_id?: string;
+  join_url: string;
+  start_url?: string;
+  recipient_email: string;
+  sent_at: string;
+}
+
 export default function AppointmentDetailPage() {
   const params = useParams<{ id: string }>();
   const { hasRole } = useAuth();
@@ -28,6 +38,9 @@ export default function AppointmentDetailPage() {
   const [cancellationReason, setCancellationReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [sendingMeetingEmail, setSendingMeetingEmail] = useState(false);
+  const [virtualMeeting, setVirtualMeeting] = useState<VirtualMeeting | null>(null);
+  const [customerName, setCustomerName] = useState<string>("");
 
   async function loadAppointment() {
     try {
@@ -41,6 +54,24 @@ export default function AppointmentDetailPage() {
       setFormResponses(responseData);
       setSelectedDate(toDateInputValue(new Date(appointmentData.start_time)));
       setSelectedStatus(appointmentData.status);
+
+      // Extract customer name from confirmation
+      if (confirmationData && confirmationData.customer_name) {
+        setCustomerName(confirmationData.customer_name);
+      }
+
+      // Fetch virtual meeting if organizer
+      if (hasRole("ORGANIZER", "ADMIN")) {
+        try {
+          const meetingData = await apiFetch<VirtualMeeting | null>(
+            `/api/appointments/${appointmentId}/virtual-meeting`,
+          );
+          setVirtualMeeting(meetingData);
+        } catch {
+          // Virtual meeting might not exist yet, that's OK
+          setVirtualMeeting(null);
+        }
+      }
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Unable to load appointment");
     }
@@ -169,6 +200,118 @@ export default function AppointmentDetailPage() {
     }
   }
 
+  async function handleSendZoomMeetingEmail() {
+    if (!appointment) {
+      return;
+    }
+
+    setError(null);
+    setMessage(null);
+    setSendingMeetingEmail(true);
+
+    try {
+      const response = await apiFetch<VirtualMeeting>(`/api/appointments/${appointment.id}/zoom-share`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      setVirtualMeeting(response);
+      setMessage(`Zoom meeting link has been sent to ${response.recipient_email}.`);
+      await loadAppointment();
+    } catch (emailError) {
+      setError(
+        emailError instanceof Error ? emailError.message : "Unable to send Zoom meeting email",
+      );
+    } finally {
+      setSendingMeetingEmail(false);
+    }
+  }
+
+  async function handlePayNow() {
+    if (!appointment || !paymentStatus?.requires_payment || paymentStatus.is_paid) {
+      return;
+    }
+
+    setError(null);
+    setMessage(null);
+
+    const scriptLoaded = await loadRazorpayScript();
+    const RazorpayCheckout = window.Razorpay;
+    if (!scriptLoaded || !RazorpayCheckout) {
+      setError("Unable to load Razorpay Checkout.");
+      return;
+    }
+
+    try {
+      const order = await apiFetch<RazorpayOrderResponse>(
+        `/api/payments/appointments/${appointment.id}/order`,
+        {
+          method: "POST",
+        },
+      );
+
+      await new Promise<void>((resolve) => {
+        const razorpay = new RazorpayCheckout({
+          key: order.key_id,
+          amount: order.amount,
+          currency: order.currency,
+          name: confirmation?.service_name || `Appointment #${appointment.id}`,
+          description: "Advance payment for appointment booking",
+          order_id: order.order_id,
+          prefill: {
+            name: user ? `${user.first_name} ${user.last_name}`.trim() : "",
+            email: user?.email || "",
+            contact: user?.phone || "",
+          },
+          notes: {
+            appointment_id: String(appointment.id),
+          },
+          handler: async (response: Record<string, string>) => {
+            try {
+              const verified = await apiFetch<PaymentStatus>(
+                `/api/payments/appointments/${appointment.id}/verify`,
+                {
+                  method: "POST",
+                  body: JSON.stringify({
+                    razorpay_order_id: response.razorpay_order_id,
+                    razorpay_payment_id: response.razorpay_payment_id,
+                    razorpay_signature: response.razorpay_signature,
+                  }),
+                },
+              );
+              setPaymentStatus(verified);
+              setMessage("Advance payment completed.");
+              await loadAppointment();
+            } catch (paymentError) {
+              setError(
+                paymentError instanceof Error
+                  ? paymentError.message
+                  : "Unable to verify payment",
+              );
+            } finally {
+              resolve();
+            }
+          },
+          modal: {
+            ondismiss: () => {
+              setMessage("Payment was not completed.");
+              resolve();
+            },
+          },
+          theme: {
+            color: "#0f172a",
+          },
+        });
+        razorpay.on("payment.failed", () => {
+          setMessage("Payment failed. You can try again.");
+          resolve();
+        });
+        razorpay.open();
+      });
+    } catch (paymentError) {
+      setError(paymentError instanceof Error ? paymentError.message : "Unable to start payment");
+    }
+  }
+
   return (
     <RequireAuth>
       <div className="page">
@@ -257,26 +400,58 @@ export default function AppointmentDetailPage() {
         ) : null}
 
         {appointment && hasRole("ORGANIZER", "ADMIN") ? (
-          <section className="panel">
-            <h2>Organizer controls</h2>
-            <label className="field">
-              <span>Status</span>
-              <select
-                value={selectedStatus}
-                onChange={(event) => setSelectedStatus(event.target.value)}
+          <>
+            <section className="panel">
+              <h2>Organizer controls</h2>
+              <label className="field">
+                <span>Status</span>
+                <select
+                  value={selectedStatus}
+                  onChange={(event) => setSelectedStatus(event.target.value)}
+                >
+                  <option value="PENDING">PENDING</option>
+                  <option value="CONFIRMED">CONFIRMED</option>
+                  <option value="CANCELLED">CANCELLED</option>
+                  <option value="RESCHEDULED">RESCHEDULED</option>
+                  <option value="COMPLETED">COMPLETED</option>
+                  <option value="NO_SHOW">NO_SHOW</option>
+                </select>
+              </label>
+              <button type="button" onClick={() => void handleStatusUpdate()}>
+                Update status
+              </button>
+            </section>
+
+            {virtualMeeting ? (
+              <section className="panel">
+                <h2>Zoom Meeting</h2>
+                <p>Provider: {virtualMeeting.provider}</p>
+                <p>Meeting Link: <a href={virtualMeeting.join_url} target="_blank" rel="noopener noreferrer">{virtualMeeting.join_url}</a></p>
+                {virtualMeeting.start_url ? (
+                  <p>Start URL: <a href={virtualMeeting.start_url} target="_blank" rel="noopener noreferrer">{virtualMeeting.start_url}</a></p>
+                ) : null}
+                <p>Recipient: {virtualMeeting.recipient_email}</p>
+                <button
+                  type="button"
+                  onClick={() => window.open(virtualMeeting.join_url, "_blank")}
+                >
+                  Join Meeting Now
+                </button>
+              </section>
+            ) : null}
+
+            <section className="panel">
+              <h2>Send Zoom Meeting Link</h2>
+              <p>Will send to: <strong>{customerName || "Customer"}</strong></p>
+              <button
+                type="button"
+                onClick={() => void handleSendZoomMeetingEmail()}
+                disabled={sendingMeetingEmail}
               >
-                <option value="PENDING">PENDING</option>
-                <option value="CONFIRMED">CONFIRMED</option>
-                <option value="CANCELLED">CANCELLED</option>
-                <option value="RESCHEDULED">RESCHEDULED</option>
-                <option value="COMPLETED">COMPLETED</option>
-                <option value="NO_SHOW">NO_SHOW</option>
-              </select>
-            </label>
-            <button type="button" onClick={() => void handleStatusUpdate()}>
-              Update status
-            </button>
-          </section>
+                {sendingMeetingEmail ? "Sending..." : "Send Zoom Meeting Link"}
+              </button>
+            </section>
+          </>
         ) : null}
       </div>
     </RequireAuth>

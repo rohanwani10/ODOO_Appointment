@@ -268,6 +268,22 @@ class AppointmentResponse(BaseModel):
             )
         }
 
+
+class ShareZoomMeetingRequest(BaseModel):
+    recipient_email: Optional[EmailStr] = None
+    recipient_name: Optional[str] = None
+
+
+class VirtualMeetingResponse(BaseModel):
+    appointment_id: int
+    provider: str
+    meeting_id: Optional[str] = None
+    join_url: str
+    start_url: Optional[str] = None
+    recipient_email: EmailStr
+    sent_at: datetime
+    reused_existing_meeting: bool = False
+
 # ==================== Phase 2: Resource Pydantic Models ====================
 
 class ResourceCreateRequest(BaseModel):
@@ -2695,6 +2711,138 @@ def get_appointment_confirmation(appointment_id: int, current_user: User = Depen
         "notes": appt.notes,
         "created_at": serialize_datetime(appt.created_at),
     }
+
+
+@app.post("/api/appointments/{appointment_id}/zoom-share", response_model=VirtualMeetingResponse)
+def share_zoom_meeting(
+    appointment_id: int,
+    request: ShareZoomMeetingRequest,
+    current_user: User = Depends(require_role("ORGANIZER", "ADMIN")),
+    db: Session = Depends(get_db),
+):
+    """Create or reuse a Zoom meeting for an appointment and email the join link."""
+    ensure_zoom_delivery_available()
+
+    appointment = get_appointment_or_404(appointment_id, db)
+    if appointment.status == "CANCELLED":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot share a Zoom meeting for a cancelled appointment",
+        )
+
+    service = get_service_or_404(appointment.service_id, db)
+    roles = get_user_roles(current_user.id, db)
+    if service.created_by != current_user.id and "ADMIN" not in roles:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+
+    resource = db.query(Resource).filter(Resource.id == appointment.resource_id).first() if appointment.resource_id else None
+    customer = db.query(User).filter(User.id == appointment.customer_id).first()
+    
+    # Use provided email or default to customer's email
+    recipient_email = request.recipient_email or (customer.email if customer else None)
+    if not recipient_email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No recipient email available",
+        )
+    
+    recipient_name = (
+        request.recipient_name.strip()
+        if request.recipient_name and request.recipient_name.strip()
+        else (
+            f"{customer.first_name} {customer.last_name}".strip()
+            if customer
+            else "there"
+        )
+    )
+
+    try:
+        virtual_meeting, reused_existing_meeting = get_or_create_zoom_meeting_for_appointment(
+            appointment,
+            service,
+            resource,
+            db,
+        )
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except RuntimeError as exc:
+        logger.error(f"Zoom meeting creation failed: {str(exc)}")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to create Zoom meeting: {str(exc)}",
+        ) from exc
+    except Exception as exc:
+        logger.error(f"Unexpected error during Zoom meeting creation: {str(exc)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred while creating the Zoom meeting",
+        ) from exc
+
+    db.commit()
+    db.refresh(virtual_meeting)
+
+    try:
+        email_sent = email_service.send_zoom_meeting_invite_email(
+            email=recipient_email,
+            recipient_name=recipient_name,
+            organizer_name=f"{current_user.first_name} {current_user.last_name}".strip() or current_user.email,
+            service_name=service.name,
+            start_time=normalize_datetime_to_utc(appointment.start_time),
+            end_time=normalize_datetime_to_utc(appointment.end_time),
+            join_url=virtual_meeting.join_url or "",
+            resource_name=resource.name if resource else None,
+            notes=appointment.notes,
+        )
+    except Exception as exc:
+        logger.error(f"Email sending failed: {str(exc)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Zoom meeting created, but email delivery failed: {str(exc)}",
+        ) from exc
+
+    if not email_sent:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Zoom meeting created, but email delivery failed",
+        )
+
+    now_utc = datetime.now(timezone.utc)
+    virtual_meeting.recipient_email = recipient_email  # type: ignore[assignment]
+    virtual_meeting.sent_at = now_utc  # type: ignore[assignment]
+    virtual_meeting.updated_at = now_utc  # type: ignore[assignment]
+    db.commit()
+    db.refresh(virtual_meeting)
+
+    return serialize_virtual_meeting(
+        virtual_meeting,
+        recipient_email=recipient_email,
+        reused_existing_meeting=reused_existing_meeting,
+    )
+
+
+@app.get("/api/appointments/{appointment_id}/virtual-meeting", response_model=Optional[VirtualMeetingResponse])
+def get_appointment_virtual_meeting(
+    appointment_id: int,
+    current_user: User = Depends(require_role("ORGANIZER", "ADMIN")),
+    db: Session = Depends(get_db),
+):
+    """Get virtual meeting details for an appointment (Organizer only)."""
+    appointment = get_appointment_or_404(appointment_id, db)
+    service = get_service_or_404(appointment.service_id, db)
+    roles = get_user_roles(current_user.id, db)
+    if service.created_by != current_user.id and "ADMIN" not in roles:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+
+    virtual_meeting = get_virtual_meeting_for_appointment(appointment_id, db)
+    if not virtual_meeting:
+        return None
+
+    return serialize_virtual_meeting(
+        virtual_meeting,
+        recipient_email=virtual_meeting.recipient_email or "unknown@example.com",
+        reused_existing_meeting=False,
+    )
 
 
 @app.put("/api/appointments/{appointment_id}/status")
