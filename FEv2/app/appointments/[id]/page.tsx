@@ -17,6 +17,16 @@ import type {
   RazorpayOrderResponse,
 } from "@/lib/types";
 
+interface VirtualMeeting {
+  appointment_id: number;
+  provider: string;
+  meeting_id?: string;
+  join_url: string;
+  start_url?: string;
+  recipient_email: string;
+  sent_at: string;
+}
+
 export default function AppointmentDetailPage() {
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
@@ -33,6 +43,9 @@ export default function AppointmentDetailPage() {
   const [cancellationReason, setCancellationReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [sendingMeetingEmail, setSendingMeetingEmail] = useState(false);
+  const [virtualMeeting, setVirtualMeeting] = useState<VirtualMeeting | null>(null);
+  const [customerName, setCustomerName] = useState<string>("");
 
   async function loadAppointment() {
     try {
@@ -48,6 +61,24 @@ export default function AppointmentDetailPage() {
       setPaymentStatus(paymentData);
       setSelectedDate(toDateInputValue(new Date(appointmentData.start_time)));
       setSelectedStatus(appointmentData.status);
+
+      // Extract customer name from confirmation
+      if (confirmationData && confirmationData.customer_name) {
+        setCustomerName(confirmationData.customer_name);
+      }
+
+      // Fetch virtual meeting if organizer
+      if (hasRole("ORGANIZER", "ADMIN")) {
+        try {
+          const meetingData = await apiFetch<VirtualMeeting | null>(
+            `/api/appointments/${appointmentId}/virtual-meeting`,
+          );
+          setVirtualMeeting(meetingData);
+        } catch {
+          // Virtual meeting might not exist yet, that's OK
+          setVirtualMeeting(null);
+        }
+      }
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Unable to load appointment");
     }
@@ -184,6 +215,32 @@ export default function AppointmentDetailPage() {
       setError(
         statusError instanceof Error ? statusError.message : "Unable to update appointment status",
       );
+    }
+  }
+
+  async function handleSendZoomMeetingEmail() {
+    if (!appointment) {
+      return;
+    }
+
+    setError(null);
+    setMessage(null);
+    setSendingMeetingEmail(true);
+
+    try {
+      const response = await apiFetch<VirtualMeeting>(`/api/appointments/${appointment.id}/zoom-share`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      setVirtualMeeting(response);
+      setMessage(`Zoom meeting link has been sent to ${response.recipient_email}.`);
+      await loadAppointment();
+    } catch (emailError) {
+      setError(
+        emailError instanceof Error ? emailError.message : "Unable to send Zoom meeting email",
+      );
+    } finally {
+      setSendingMeetingEmail(false);
     }
   }
 
@@ -377,26 +434,58 @@ export default function AppointmentDetailPage() {
         ) : null}
 
         {appointment && hasRole("ORGANIZER", "ADMIN") ? (
-          <section className="panel">
-            <h2>Organizer controls</h2>
-            <label className="field">
-              <span>Status</span>
-              <select
-                value={selectedStatus}
-                onChange={(event) => setSelectedStatus(event.target.value)}
+          <>
+            <section className="panel">
+              <h2>Organizer controls</h2>
+              <label className="field">
+                <span>Status</span>
+                <select
+                  value={selectedStatus}
+                  onChange={(event) => setSelectedStatus(event.target.value)}
+                >
+                  <option value="PENDING">PENDING</option>
+                  <option value="CONFIRMED">CONFIRMED</option>
+                  <option value="CANCELLED">CANCELLED</option>
+                  <option value="RESCHEDULED">RESCHEDULED</option>
+                  <option value="COMPLETED">COMPLETED</option>
+                  <option value="NO_SHOW">NO_SHOW</option>
+                </select>
+              </label>
+              <button type="button" onClick={() => void handleStatusUpdate()}>
+                Update status
+              </button>
+            </section>
+
+            {virtualMeeting ? (
+              <section className="panel">
+                <h2>Zoom Meeting</h2>
+                <p>Provider: {virtualMeeting.provider}</p>
+                <p>Meeting Link: <a href={virtualMeeting.join_url} target="_blank" rel="noopener noreferrer">{virtualMeeting.join_url}</a></p>
+                {virtualMeeting.start_url ? (
+                  <p>Start URL: <a href={virtualMeeting.start_url} target="_blank" rel="noopener noreferrer">{virtualMeeting.start_url}</a></p>
+                ) : null}
+                <p>Recipient: {virtualMeeting.recipient_email}</p>
+                <button
+                  type="button"
+                  onClick={() => window.open(virtualMeeting.join_url, "_blank")}
+                >
+                  Join Meeting Now
+                </button>
+              </section>
+            ) : null}
+
+            <section className="panel">
+              <h2>Send Zoom Meeting Link</h2>
+              <p>Will send to: <strong>{customerName || "Customer"}</strong></p>
+              <button
+                type="button"
+                onClick={() => void handleSendZoomMeetingEmail()}
+                disabled={sendingMeetingEmail}
               >
-                <option value="PENDING">PENDING</option>
-                <option value="CONFIRMED">CONFIRMED</option>
-                <option value="CANCELLED">CANCELLED</option>
-                <option value="RESCHEDULED">RESCHEDULED</option>
-                <option value="COMPLETED">COMPLETED</option>
-                <option value="NO_SHOW">NO_SHOW</option>
-              </select>
-            </label>
-            <button type="button" onClick={() => void handleStatusUpdate()}>
-              Update status
-            </button>
-          </section>
+                {sendingMeetingEmail ? "Sending..." : "Send Zoom Meeting Link"}
+              </button>
+            </section>
+          </>
         ) : null}
       </div>
     </RequireAuth>
