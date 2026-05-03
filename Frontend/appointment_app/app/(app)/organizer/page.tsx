@@ -14,7 +14,27 @@ import { getErrorMessage } from "@/lib/errors";
 import type { Appointment } from "@/types/booking";
 import type { Organization } from "@/types/organization";
 import type { Resource, ResourceType, ResourceWorkingHour } from "@/types/resource";
-import type { Service } from "@/types/service";
+import type { Service, FormQuestion } from "@/types/service";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  Building2,
+  Package,
+  Clock,
+  Briefcase,
+  Plus,
+  Check,
+  Loader2,
+  CheckCircle2,
+  ExternalLink,
+  ChevronDown,
+  ChevronUp,
+  Edit3,
+  Trash2,
+  Copy,
+  Link2,
+  FileText,
+  X,
+} from "lucide-react";
 
 type WorkingHourForm = {
   day_of_week: number;
@@ -23,6 +43,12 @@ type WorkingHourForm = {
   break_start: string;
   break_end: string;
   is_available: boolean;
+};
+
+type Toast = {
+  id: string;
+  message: string;
+  type: "success" | "error";
 };
 
 function createDefaultWorkingHours() {
@@ -45,6 +71,196 @@ function timeForInput(value?: string | null) {
 
 function timeForApi(value: string) {
   return value.length === 5 ? `${value}:00` : value;
+}
+
+// Toast notification component
+function Toast({ message, type, onClose }: { message: string; type: "success" | "error"; onClose: () => void }) {
+  useEffect(() => {
+    const timer = setTimeout(onClose, 4000);
+    return () => clearTimeout(timer);
+  }, [onClose]);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      className={`rounded-2xl border px-4 py-3 text-sm font-medium ${
+        type === "success"
+          ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-100"
+          : "border-red-400/20 bg-red-500/10 text-red-100"
+      }`}
+    >
+      {message}
+    </motion.div>
+  );
+}
+
+// Skeleton loader component
+function WorkspaceSkeleton() {
+  return (
+    <div className="space-y-8">
+      <div className="h-32 rounded-3xl border border-white/10 bg-slate-950/50 animate-pulse" />
+      <div className="grid gap-4 md:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="h-24 rounded-3xl border border-white/10 bg-slate-950/50 animate-pulse" />
+        ))}
+      </div>
+      <div className="grid gap-6 xl:grid-cols-2">
+        {Array.from({ length: 2 }).map((_, i) => (
+          <div key={i} className="h-96 rounded-3xl border border-white/10 bg-slate-950/50 animate-pulse" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Collapsible form section component
+function FormSection({
+  title,
+  subtitle,
+  step,
+  icon: Icon,
+  isOpen,
+  onToggle,
+  children,
+  isCompleted,
+}: {
+  title: string;
+  subtitle: string;
+  step: number;
+  icon: React.ComponentType<{ className?: string }>;
+  isOpen: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+  isCompleted?: boolean;
+}) {
+  return (
+    <motion.div className="rounded-3xl border border-white/10 bg-white/5 backdrop-blur overflow-hidden">
+      <button
+        onClick={onToggle}
+        className="w-full px-6 py-4 flex items-center justify-between hover:bg-white/10 transition-colors"
+      >
+        <div className="flex items-center gap-4">
+          <div className="flex size-10 items-center justify-center rounded-xl bg-sky-400/20">
+            {isCompleted ? (
+              <CheckCircle2 className="size-5 text-emerald-400" />
+            ) : (
+              <Icon className="size-5 text-sky-300" />
+            )}
+          </div>
+          <div className="text-left">
+            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Step {step}</p>
+            <p className="font-semibold text-white">{title}</p>
+            <p className="text-sm text-slate-300">{subtitle}</p>
+          </div>
+        </div>
+        {isOpen ? (
+          <ChevronUp className="size-5 text-slate-400" />
+        ) : (
+          <ChevronDown className="size-5 text-slate-400" />
+        )}
+      </button>
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden border-t border-white/10 bg-slate-950/40"
+          >
+            <div className="p-6 space-y-4">{children}</div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  );
+}
+
+// Stats card component
+function StatsCard({
+  label,
+  value,
+  icon: Icon,
+  color,
+}: {
+  label: string;
+  value: number;
+  icon: React.ComponentType<{ className?: string }>;
+  color: "sky" | "emerald" | "violet" | "amber";
+}) {
+  const colorMap = {
+    sky: "bg-sky-500/20 text-sky-300",
+    emerald: "bg-emerald-500/20 text-emerald-300",
+    violet: "bg-violet-500/20 text-violet-300",
+    amber: "bg-amber-500/20 text-amber-300",
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="rounded-3xl border border-white/10 bg-slate-950/70 p-6 hover:bg-slate-950/90 transition-colors"
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{label}</p>
+          <p className="mt-3 text-3xl font-bold text-white">{value}</p>
+        </div>
+        <div className={`rounded-xl p-3 ${colorMap[color]}`}>
+          <Icon className="size-6" />
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+// Form input component with validation
+function FormInput({
+  label,
+  placeholder,
+  value,
+  onChange,
+  error,
+  type = "text",
+  required = false,
+  rows,
+}: {
+  label?: string;
+  placeholder?: string;
+  value: string | number;
+  onChange: (value: string | number) => void;
+  error?: string;
+  type?: string;
+  required?: boolean;
+  rows?: number;
+}) {
+  const Component = rows ? "textarea" : "input";
+
+  return (
+    <div>
+      {label && (
+        <label className="block mb-2 text-sm font-medium text-slate-200">
+          {label}
+          {required && <span className="text-red-400 ml-1">*</span>}
+        </label>
+      )}
+      <Component
+        value={value}
+        onChange={(e: any) => onChange(e.target.value)}
+        placeholder={placeholder}
+        type={type}
+        rows={rows}
+        required={required}
+        className={`w-full rounded-2xl border px-4 py-3 text-white outline-none transition-colors ${
+          error
+            ? "border-red-400/50 bg-red-500/10 focus:border-red-400"
+            : "border-white/10 bg-slate-900 focus:border-sky-400 focus:ring-sky-400/20 focus:ring-1"
+        }`}
+      />
+      {error && <p className="mt-1 text-xs text-red-400">{error}</p>}
+    </div>
+  );
 }
 
 export default function OrganizerWorkspacePage() {
@@ -88,14 +304,47 @@ export default function OrganizerWorkspacePage() {
   const [selectedServiceResourceIds, setSelectedServiceResourceIds] = useState<
     number[]
   >([]);
-  const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingSchedule, setIsSavingSchedule] = useState(false);
   const [isSubmittingOrg, setIsSubmittingOrg] = useState(false);
   const [isSubmittingResource, setIsSubmittingResource] = useState(false);
   const [isSubmittingService, setIsSubmittingService] = useState(false);
   const [publishingServiceId, setPublishingServiceId] = useState<number | null>(null);
+  const [deletingServiceId, setDeletingServiceId] = useState<number | null>(null);
+  const [editingService, setEditingService] = useState<Service | null>(null);
+  const [copiedLinkId, setCopiedLinkId] = useState<number | null>(null);
+
+  // Form questions state
+  const [formQuestionsByService, setFormQuestionsByService] = useState<Record<number, FormQuestion[]>>({});
+  const [editingQuestionServiceId, setEditingQuestionServiceId] = useState<number | null>(null);
+  const [questionForm, setQuestionForm] = useState({ question_text: "", field_type: "TEXT", is_required: false, options: "", display_order: 0 });
+  const [editingQuestionId, setEditingQuestionId] = useState<number | null>(null);
+  const [isSubmittingQuestion, setIsSubmittingQuestion] = useState(false);
+
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  
+  // Form validation errors
+  const [orgErrors, setOrgErrors] = useState<Record<string, string>>({});
+  const [resourceErrors, setResourceErrors] = useState<Record<string, string>>({});
+  const [serviceErrors, setServiceErrors] = useState<Record<string, string>>({});
+
+  // Collapsible sections
+  const [openSections, setOpenSections] = useState({
+    org: organizations.length === 0,
+    resource: resources.length === 0,
+    schedule: false,
+    service: services.length === 0,
+  });
+
+  const addToast = (message: string, type: "success" | "error") => {
+    const id = Date.now().toString();
+    setToasts((prev) => [...prev, { id, message, type }]);
+  };
+
+  const removeToast = (id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
 
   const servicesById = useMemo(
     () =>
@@ -117,7 +366,6 @@ export default function OrganizerWorkspacePage() {
 
   const loadWorkspace = useCallback(async () => {
     setIsLoading(true);
-    setError(null);
 
     try {
       const [organizationData, resourceData, serviceData, bookingData] =
@@ -152,7 +400,7 @@ export default function OrganizerWorkspacePage() {
       );
       setSelectedResourceId((current) => current ?? resourceData[0]?.id ?? null);
     } catch (loadError) {
-      setError(getErrorMessage(loadError, "Unable to load organizer workspace."));
+      addToast(getErrorMessage(loadError, "Failed to load workspace"), "error");
     } finally {
       setIsLoading(false);
     }
@@ -218,11 +466,59 @@ export default function OrganizerWorkspacePage() {
     };
   }, [selectedResourceId]);
 
+  function validateOrganization() {
+    const errors: Record<string, string> = {};
+    if (!organizationForm.name.trim()) {
+      errors.name = "Organization name is required";
+    }
+    if (organizationForm.name.trim().length < 2) {
+      errors.name = "Name must be at least 2 characters";
+    }
+    setOrgErrors(errors);
+    return Object.keys(errors).length === 0;
+  }
+
+  function validateResource() {
+    const errors: Record<string, string> = {};
+    if (!resourceForm.name.trim()) {
+      errors.name = "Resource name is required";
+    }
+    if (resourceForm.name.trim().length < 2) {
+      errors.name = "Name must be at least 2 characters";
+    }
+    if (resourceForm.capacity < 1) {
+      errors.capacity = "Capacity must be at least 1";
+    }
+    setResourceErrors(errors);
+    return Object.keys(errors).length === 0;
+  }
+
+  function validateService() {
+    const errors: Record<string, string> = {};
+    if (!serviceForm.name.trim()) {
+      errors.name = "Service name is required";
+    }
+    if (serviceForm.name.trim().length < 2) {
+      errors.name = "Name must be at least 2 characters";
+    }
+    if (serviceForm.duration_minutes < 5) {
+      errors.duration_minutes = "Duration must be at least 5 minutes";
+    }
+    if (serviceForm.capacity < 1) {
+      errors.capacity = "Capacity must be at least 1";
+    }
+    if (serviceForm.requires_advance_payment && serviceForm.advance_payment_amount <= 0) {
+      errors.advance_payment_amount = "Payment amount must be greater than 0";
+    }
+    setServiceErrors(errors);
+    return Object.keys(errors).length === 0;
+  }
+
   async function handleOrganizationSubmit(event: React.FormEvent) {
     event.preventDefault();
+    if (!validateOrganization()) return;
+
     setIsSubmittingOrg(true);
-    setError(null);
-    setMessage(null);
 
     try {
       const organization = await apiFetch<Organization>("/api/organizations", {
@@ -234,11 +530,12 @@ export default function OrganizerWorkspacePage() {
       });
 
       setOrganizationForm({ name: "", description: "" });
+      setOrgErrors({});
       setSelectedOrganizationId(organization.id);
-      setMessage("Organization created.");
+      addToast("Organization created successfully", "success");
       await loadWorkspace();
     } catch (submitError) {
-      setError(getErrorMessage(submitError, "Unable to create organization."));
+      addToast(getErrorMessage(submitError, "Failed to create organization"), "error");
     } finally {
       setIsSubmittingOrg(false);
     }
@@ -246,14 +543,13 @@ export default function OrganizerWorkspacePage() {
 
   async function handleResourceSubmit(event: React.FormEvent) {
     event.preventDefault();
+    if (!validateResource()) return;
     if (!selectedOrganizationId) {
-      setError("Create or select an organization first.");
+      addToast("Create or select an organization first", "error");
       return;
     }
 
     setIsSubmittingResource(true);
-    setError(null);
-    setMessage(null);
 
     try {
       const resource = await apiFetch<Resource>("/api/resources", {
@@ -273,11 +569,13 @@ export default function OrganizerWorkspacePage() {
         description: "",
         capacity: 1,
       });
+      setResourceErrors({});
       setSelectedResourceId(resource.id);
-      setMessage("Resource created. Configure working hours next.");
+      setOpenSections((prev) => ({ ...prev, schedule: true }));
+      addToast("Resource created. Configure working hours next", "success");
       await loadWorkspace();
     } catch (submitError) {
-      setError(getErrorMessage(submitError, "Unable to create resource."));
+      addToast(getErrorMessage(submitError, "Failed to create resource"), "error");
     } finally {
       setIsSubmittingResource(false);
     }
@@ -285,13 +583,11 @@ export default function OrganizerWorkspacePage() {
 
   async function handleScheduleSave() {
     if (!selectedResourceId) {
-      setError("Select a resource before saving working hours.");
+      addToast("Select a resource before saving working hours", "error");
       return;
     }
 
     setIsSavingSchedule(true);
-    setError(null);
-    setMessage(null);
 
     try {
       for (const day of weekDays) {
@@ -322,7 +618,7 @@ export default function OrganizerWorkspacePage() {
         }
       }
 
-      setMessage("Weekly availability saved.");
+      addToast("Working hours saved successfully", "success");
 
       const updatedHours = await apiFetch<ResourceWorkingHour[]>(
         `/api/resources/${selectedResourceId}/working-hours`,
@@ -336,7 +632,7 @@ export default function OrganizerWorkspacePage() {
       );
       setExistingWorkingHours(updatedMap);
     } catch (saveError) {
-      setError(getErrorMessage(saveError, "Unable to save working hours."));
+      addToast(getErrorMessage(saveError, "Failed to save working hours"), "error");
     } finally {
       setIsSavingSchedule(false);
     }
@@ -344,14 +640,13 @@ export default function OrganizerWorkspacePage() {
 
   async function handleServiceSubmit(event: React.FormEvent) {
     event.preventDefault();
+    if (!validateService()) return;
     if (!selectedOrganizationId) {
-      setError("Create or select an organization first.");
+      addToast("Create or select an organization first", "error");
       return;
     }
 
     setIsSubmittingService(true);
-    setError(null);
-    setMessage(null);
 
     try {
       const service = await apiFetch<Service>("/api/services", {
@@ -393,10 +688,11 @@ export default function OrganizerWorkspacePage() {
         advance_payment_amount: 0,
       });
       setSelectedServiceResourceIds([]);
-      setMessage("Service created.");
+      setServiceErrors({});
+      addToast("Service created successfully", "success");
       await loadWorkspace();
     } catch (submitError) {
-      setError(getErrorMessage(submitError, "Unable to create service."));
+      addToast(getErrorMessage(submitError, "Failed to create service"), "error");
     } finally {
       setIsSubmittingService(false);
     }
@@ -404,24 +700,153 @@ export default function OrganizerWorkspacePage() {
 
   async function handlePublishToggle(service: Service) {
     setPublishingServiceId(service.id);
-    setError(null);
-    setMessage(null);
-
     try {
-      await apiFetch(
-        `/api/services/${service.id}/${service.is_published ? "unpublish" : "publish"}`,
-        {
-          method: "POST",
-        },
-      );
-      setMessage(
-        service.is_published ? "Service unpublished." : "Service published.",
-      );
+      await apiFetch(`/api/services/${service.id}/${service.is_published ? "unpublish" : "publish"}`, { method: "POST" });
+      addToast(service.is_published ? "Service unpublished" : "Service published", "success");
       await loadWorkspace();
     } catch (toggleError) {
-      setError(getErrorMessage(toggleError, "Unable to update service status."));
+      addToast(getErrorMessage(toggleError, "Failed to update service status"), "error");
     } finally {
       setPublishingServiceId(null);
+    }
+  }
+
+  async function handleDeleteService(service: Service) {
+    if (!window.confirm(`Delete "${service.name}"? This cannot be undone.`)) return;
+    setDeletingServiceId(service.id);
+    try {
+      await apiFetch(`/api/services/${service.id}`, { method: "DELETE" });
+      addToast("Service deleted", "success");
+      await loadWorkspace();
+    } catch (e) {
+      addToast(getErrorMessage(e, "Failed to delete service"), "error");
+    } finally {
+      setDeletingServiceId(null);
+    }
+  }
+
+  async function handleEditService(event: React.FormEvent) {
+    event.preventDefault();
+    if (!editingService || !validateService()) return;
+    setIsSubmittingService(true);
+    try {
+      await apiFetch(`/api/services/${editingService.id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          name: serviceForm.name.trim(),
+          description: serviceForm.description.trim() || null,
+          duration_minutes: Number(serviceForm.duration_minutes),
+          capacity: Number(serviceForm.capacity),
+          max_bookings_per_user: Number(serviceForm.max_bookings_per_user) || null,
+          requires_advance_payment: serviceForm.requires_advance_payment,
+          advance_payment_amount: serviceForm.requires_advance_payment ? Number(serviceForm.advance_payment_amount) || 0 : null,
+        }),
+      });
+      setEditingService(null);
+      setServiceForm({ name: "", description: "", duration_minutes: 30, capacity: 1, is_published: true, max_bookings_per_user: 1, requires_advance_payment: false, advance_payment_amount: 0 });
+      addToast("Service updated successfully", "success");
+      await loadWorkspace();
+    } catch (e) {
+      addToast(getErrorMessage(e, "Failed to update service"), "error");
+    } finally {
+      setIsSubmittingService(false);
+    }
+  }
+
+  function startEditingService(service: Service) {
+    setEditingService(service);
+    setServiceForm({
+      name: service.name,
+      description: service.description || "",
+      duration_minutes: service.duration_minutes,
+      capacity: service.capacity,
+      is_published: service.is_published,
+      max_bookings_per_user: service.max_bookings_per_user || 1,
+      requires_advance_payment: service.requires_advance_payment,
+      advance_payment_amount: service.advance_payment_amount || 0,
+    });
+    setOpenSections((p) => ({ ...p, service: true }));
+  }
+
+  function cancelEditingService() {
+    setEditingService(null);
+    setServiceForm({ name: "", description: "", duration_minutes: 30, capacity: 1, is_published: true, max_bookings_per_user: 1, requires_advance_payment: false, advance_payment_amount: 0 });
+  }
+
+  async function handleCopyShareableLink(service: Service) {
+    try {
+      if (!service.is_published) {
+        const publishResponse = await apiFetch<{ message: string; shareable_link?: string }>(
+          `/api/services/${service.id}/publish`,
+          { method: "POST" },
+        );
+        service = {
+          ...service,
+          is_published: true,
+          shareable_link: publishResponse.shareable_link ?? service.shareable_link,
+        };
+      }
+
+      if (!service.shareable_link) {
+        const updated = await apiFetch<{ shareable_link: string }>(
+          `/api/services/${service.id}/shareable-link`,
+          { method: "POST" },
+        );
+        service = { ...service, shareable_link: updated.shareable_link };
+      }
+      const link = `${window.location.origin}/services/share/${service.shareable_link}`;
+      await navigator.clipboard.writeText(link);
+      setCopiedLinkId(service.id);
+      addToast("Link copied to clipboard", "success");
+      setTimeout(() => setCopiedLinkId(null), 2000);
+      await loadWorkspace();
+    } catch (e) {
+      addToast(getErrorMessage(e, "Failed to copy link"), "error");
+    }
+  }
+
+  // Form questions handlers
+  async function loadFormQuestions(serviceId: number) {
+    try {
+      const questions = await apiFetch<FormQuestion[]>(`/api/services/${serviceId}/form-questions`);
+      setFormQuestionsByService((p) => ({ ...p, [serviceId]: questions }));
+    } catch { /* ignore */ }
+  }
+
+  async function handleQuestionSubmit(serviceId: number) {
+    setIsSubmittingQuestion(true);
+    try {
+      const body = {
+        question_text: questionForm.question_text.trim(),
+        field_type: questionForm.field_type,
+        is_required: questionForm.is_required,
+        options: questionForm.options.trim() || null,
+        display_order: questionForm.display_order,
+      };
+      if (editingQuestionId) {
+        await apiFetch(`/api/services/${serviceId}/form-questions/${editingQuestionId}`, { method: "PUT", body: JSON.stringify(body) });
+        addToast("Question updated", "success");
+      } else {
+        await apiFetch(`/api/services/${serviceId}/form-questions`, { method: "POST", body: JSON.stringify(body) });
+        addToast("Question added", "success");
+      }
+      setQuestionForm({ question_text: "", field_type: "TEXT", is_required: false, options: "", display_order: 0 });
+      setEditingQuestionId(null);
+      await loadFormQuestions(serviceId);
+    } catch (e) {
+      addToast(getErrorMessage(e, "Failed to save question"), "error");
+    } finally {
+      setIsSubmittingQuestion(false);
+    }
+  }
+
+  async function handleDeleteQuestion(serviceId: number, questionId: number) {
+    try {
+      await apiFetch(`/api/services/${serviceId}/form-questions/${questionId}`, { method: "DELETE" });
+      addToast("Question deleted", "success");
+      await loadFormQuestions(serviceId);
+    } catch (e) {
+      addToast(getErrorMessage(e, "Failed to delete question"), "error");
     }
   }
 
@@ -434,710 +859,747 @@ export default function OrganizerWorkspacePage() {
     [appointments],
   );
 
+  const completionStatus = useMemo(
+    () => ({
+      org: organizations.length > 0,
+      resource: resources.length > 0,
+      schedule: Object.values(existingWorkingHours).some((h) => h.is_available),
+      service: services.length > 0,
+    }),
+    [organizations, resources, existingWorkingHours, services],
+  );
+
+  if (isLoading) {
+    return (
+      <AuthGuard allowedRoles={["ORGANIZER", "ADMIN"]}>
+        <WorkspaceSkeleton />
+      </AuthGuard>
+    );
+  }
+
   return (
     <AuthGuard allowedRoles={["ORGANIZER", "ADMIN"]}>
       <div className="space-y-8">
-        <section className="rounded-3xl border border-white/10 bg-white/5 p-8 shadow-2xl shadow-slate-950/20 backdrop-blur">
+        {/* Toast notifications */}
+        <AnimatePresence mode="popLayout">
+          <div className="fixed bottom-8 right-8 z-50 space-y-3">
+            {toasts.map((toast) => (
+              <Toast
+                key={toast.id}
+                message={toast.message}
+                type={toast.type}
+                onClose={() => removeToast(toast.id)}
+              />
+            ))}
+          </div>
+        </AnimatePresence>
+
+        {/* Header */}
+        <motion.section
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="rounded-3xl border border-white/10 bg-gradient-to-br from-white/5 to-white/0 p-8 backdrop-blur"
+        >
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="text-xs uppercase tracking-[0.25em] text-sky-300/80">
                 Organizer workspace
               </p>
-              <h1 className="mt-2 text-4xl font-semibold tracking-tight text-white">
-                Phase 2 service setup
+              <h1 className="mt-2 text-4xl font-bold tracking-tight text-white">
+                Service Management
               </h1>
               <p className="mt-3 max-w-3xl text-slate-300">
-                Create your organization context, add bookable resources, define
-                weekly availability, then publish services customers can book
-                from the home page.
+                Set up your organization, define resources, configure availability, and publish services for customers to book.
               </p>
             </div>
 
             <div className="flex flex-wrap gap-3">
               <Link
                 href="/"
-                className="rounded-full border border-white/15 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/10"
+                className="inline-flex items-center gap-2 rounded-full border border-white/15 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/10"
               >
+                <ExternalLink className="size-4" />
                 Customer home
               </Link>
               <Link
                 href="/appointments"
-                className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-950 transition-colors hover:bg-slate-200"
+                className="inline-flex items-center gap-2 rounded-full bg-sky-400 px-4 py-2 text-sm font-semibold text-slate-950 transition-colors hover:bg-sky-300"
               >
-                View bookings
+                <Edit3 className="size-4" />
+                All bookings
               </Link>
             </div>
           </div>
-        </section>
+        </motion.section>
 
-        {(message || error) && (
-          <div
-            className={`rounded-2xl p-4 text-sm ${
-              error
-                ? "border border-red-400/20 bg-red-500/10 text-red-100"
-                : "border border-emerald-400/20 bg-emerald-500/10 text-emerald-100"
-            }`}
+        {/* Stats */}
+        <div className="grid gap-4 md:grid-cols-4">
+          <StatsCard
+            label="Organizations"
+            value={organizations.length}
+            icon={Building2}
+            color="sky"
+          />
+          <StatsCard
+            label="Resources"
+            value={resources.length}
+            icon={Package}
+            color="emerald"
+          />
+          <StatsCard
+            label="Services"
+            value={services.length}
+            icon={Briefcase}
+            color="violet"
+          />
+          <StatsCard
+            label="Total Bookings"
+            value={appointments.length}
+            icon={Clock}
+            color="amber"
+          />
+        </div>
+
+        {/* Onboarding progress */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="rounded-2xl border border-white/10 bg-slate-950/50 p-4"
+        >
+          <p className="text-sm font-medium text-slate-200 mb-3">Setup Progress</p>
+          <div className="flex gap-2">
+            {[
+              { label: "Org", completed: completionStatus.org },
+              { label: "Resources", completed: completionStatus.resource },
+              { label: "Hours", completed: completionStatus.schedule },
+              { label: "Services", completed: completionStatus.service },
+            ].map((step, i) => (
+              <div
+                key={i}
+                className={`flex-1 h-2 rounded-full transition-colors ${
+                  step.completed ? "bg-emerald-400" : "bg-slate-700"
+                }`}
+                title={step.label}
+              />
+            ))}
+          </div>
+        </motion.div>
+
+        {/* Forms sections */}
+        <div className="space-y-4">
+          {/* Organization */}
+          <FormSection
+            title="Organization Context"
+            subtitle="Your business entity"
+            step={1}
+            icon={Building2}
+            isOpen={openSections.org}
+            onToggle={() => setOpenSections((p) => ({ ...p, org: !p.org }))}
+            isCompleted={completionStatus.org}
           >
-            {error || message}
-          </div>
-        )}
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-200 mb-2">
+                  Active Organization
+                </label>
+                {organizations.length > 0 ? (
+                  <select
+                    value={selectedOrganizationId ?? ""}
+                    onChange={(e) => setSelectedOrganizationId(Number(e.target.value) || null)}
+                    className="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none focus:border-sky-400 focus:ring-sky-400/20 focus:ring-1"
+                  >
+                    <option value="">Select organization</option>
+                    {organizations.map((org) => (
+                      <option key={org.id} value={org.id}>
+                        {org.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className="text-sm text-slate-400">No organizations yet. Create one below.</p>
+                )}
+              </div>
 
-        {isLoading ? (
-          <div className="rounded-3xl border border-white/10 bg-slate-950/70 p-8 text-slate-300">
-            Loading workspace...
-          </div>
-        ) : (
-          <>
-            <section className="grid gap-4 md:grid-cols-4">
-              <div className="rounded-3xl border border-white/10 bg-slate-950/70 p-6">
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
-                  Organizations
-                </p>
-                <p className="mt-3 text-3xl font-semibold text-white">
-                  {organizations.length}
-                </p>
+              <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4 space-y-4">
+                <p className="text-sm font-semibold text-white">Create New Organization</p>
+                <FormInput
+                  label="Organization Name"
+                  placeholder="Your studio, clinic, or agency"
+                  value={organizationForm.name}
+                  onChange={(v) => setOrganizationForm((p) => ({ ...p, name: v as string }))}
+                  error={orgErrors.name}
+                  required
+                />
+                <FormInput
+                  label="Description"
+                  placeholder="Brief description of your organization"
+                  value={organizationForm.description}
+                  onChange={(v) => setOrganizationForm((p) => ({ ...p, description: v as string }))}
+                  rows={3}
+                />
+                <button
+                  onClick={handleOrganizationSubmit}
+                  disabled={isSubmittingOrg}
+                  className="w-full rounded-full bg-sky-400 hover:bg-sky-300 disabled:opacity-60 disabled:cursor-not-allowed px-4 py-2 text-sm font-semibold text-slate-950 transition-colors flex items-center justify-center gap-2"
+                >
+                  {isSubmittingOrg ? (
+                    <>
+                      <Loader2 className="size-4 animate-spin" />
+                      Creating...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="size-4" />
+                      Create Organization
+                    </>
+                  )}
+                </button>
               </div>
-              <div className="rounded-3xl border border-white/10 bg-slate-950/70 p-6">
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
-                  Resources
-                </p>
-                <p className="mt-3 text-3xl font-semibold text-white">
-                  {resources.length}
-                </p>
-              </div>
-              <div className="rounded-3xl border border-white/10 bg-slate-950/70 p-6">
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
-                  Services
-                </p>
-                <p className="mt-3 text-3xl font-semibold text-white">
-                  {services.length}
-                </p>
-              </div>
-              <div className="rounded-3xl border border-white/10 bg-slate-950/70 p-6">
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
-                  Bookings
-                </p>
-                <p className="mt-3 text-3xl font-semibold text-white">
-                  {appointments.length}
-                </p>
-              </div>
-            </section>
+            </div>
+          </FormSection>
 
-            <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-              <form
-                onSubmit={handleOrganizationSubmit}
-                className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
-                      Step 1
-                    </p>
-                    <h2 className="mt-2 text-2xl font-semibold text-white">
-                      Organization context
-                    </h2>
+          {/* Resources */}
+          <FormSection
+            title="Bookable Resources"
+            subtitle="Providers, rooms, equipment"
+            step={2}
+            icon={Package}
+            isOpen={openSections.resource}
+            onToggle={() => setOpenSections((p) => ({ ...p, resource: !p.resource }))}
+            isCompleted={completionStatus.resource}
+          >
+            <div className="space-y-4">
+              {selectedOrganizationId ? (
+                <>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <FormInput
+                      label="Resource Name"
+                      placeholder="Dr. Smith, Meeting Room A"
+                      value={resourceForm.name}
+                      onChange={(v) => setResourceForm((p) => ({ ...p, name: v as string }))}
+                      error={resourceErrors.name}
+                      required
+                    />
+                    <div>
+                      <label className="block mb-2 text-sm font-medium text-slate-200">
+                        Type <span className="text-red-400">*</span>
+                      </label>
+                      <select
+                        value={resourceForm.type}
+                        onChange={(e) => setResourceForm((p) => ({ ...p, type: e.target.value as ResourceType }))}
+                        className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none focus:border-sky-400 focus:ring-sky-400/20 focus:ring-1"
+                      >
+                        <option value="PROVIDER">Provider</option>
+                        <option value="ROOM">Room</option>
+                        <option value="EQUIPMENT">Equipment</option>
+                      </select>
+                    </div>
+                    <FormInput
+                      label="Capacity"
+                      value={resourceForm.capacity}
+                      onChange={(v) => setResourceForm((p) => ({ ...p, capacity: Number(v) }))}
+                      error={resourceErrors.capacity}
+                      type="number"
+                      required
+                    />
+                    <FormInput
+                      label="Description"
+                      placeholder="Optional details"
+                      value={resourceForm.description}
+                      onChange={(v) => setResourceForm((p) => ({ ...p, description: v as string }))}
+                    />
                   </div>
-                  <span className="rounded-full border border-white/10 px-3 py-1 text-xs uppercase tracking-[0.2em] text-slate-300">
-                    {selectedOrganizationId ? `Active #${selectedOrganizationId}` : "Required"}
-                  </span>
-                </div>
 
-                <div className="mt-5 space-y-4">
+                  <button
+                    onClick={handleResourceSubmit}
+                    disabled={isSubmittingResource}
+                    className="w-full rounded-full bg-white hover:bg-slate-200 disabled:opacity-60 disabled:cursor-not-allowed text-slate-950 px-4 py-2 text-sm font-semibold transition-colors flex items-center justify-center gap-2"
+                  >
+                    {isSubmittingResource ? (
+                      <>
+                        <Loader2 className="size-4 animate-spin" />
+                        Creating...
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="size-4" />
+                        Create Resource
+                      </>
+                    )}
+                  </button>
+
+                  {resources.length > 0 && (
+                    <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-3">
+                      <p className="text-xs text-slate-400 mb-2">Resources ({resources.length})</p>
+                      <div className="flex flex-wrap gap-2">
+                        {resources.map((r) => (
+                          <span
+                            key={r.id}
+                            className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-slate-950 px-3 py-1 text-xs text-slate-200"
+                          >
+                            {r.name}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-white/10 bg-slate-950/40 p-4 text-center">
+                  <p className="text-sm text-slate-400">Create an organization first</p>
+                </div>
+              )}
+            </div>
+          </FormSection>
+
+          {/* Working Hours */}
+          <FormSection
+            title="Weekly Availability"
+            subtitle="Configure working hours per resource"
+            step={3}
+            icon={Clock}
+            isOpen={openSections.schedule}
+            onToggle={() => setOpenSections((p) => ({ ...p, schedule: !p.schedule }))}
+            isCompleted={completionStatus.schedule}
+          >
+            <div className="space-y-4">
+              {resources.length > 0 ? (
+                <>
                   <div>
-                    <label className="mb-1 block text-sm text-slate-300">
-                      Active organization
+                    <label className="block text-sm font-medium text-slate-200 mb-2">
+                      Select Resource
                     </label>
                     <select
-                      value={selectedOrganizationId ?? ""}
-                      onChange={(event) =>
-                        setSelectedOrganizationId(Number(event.target.value) || null)
-                      }
-                      className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-white outline-none"
+                      value={selectedResourceId ?? ""}
+                      onChange={(e) => setSelectedResourceId(Number(e.target.value) || null)}
+                      className="w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none focus:border-sky-400 focus:ring-sky-400/20 focus:ring-1"
                     >
-                      <option value="">Select organization</option>
-                      {organizations.map((organization) => (
-                        <option key={organization.id} value={organization.id}>
-                          {organization.name}
+                      <option value="">Select a resource</option>
+                      {resources.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.name}
                         </option>
                       ))}
                     </select>
                   </div>
 
-                  <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
-                    <p className="text-sm font-semibold text-white">
-                      Create another organization
-                    </p>
-                    <div className="mt-4 space-y-4">
-                      <input
-                        value={organizationForm.name}
-                        onChange={(event) =>
-                          setOrganizationForm((current) => ({
-                            ...current,
-                            name: event.target.value,
-                          }))
-                        }
-                        placeholder="Studio or clinic name"
-                        className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none"
-                        required
-                      />
-                      <textarea
-                        value={organizationForm.description}
-                        onChange={(event) =>
-                          setOrganizationForm((current) => ({
-                            ...current,
-                            description: event.target.value,
-                          }))
-                        }
-                        placeholder="Short description"
-                        rows={3}
-                        className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none"
-                      />
+                  {selectedResourceId && (
+                    <div className="space-y-3">
+                      {weekDays.map((day) => {
+                        const entry = workingHours[day.value];
+                        return (
+                          <div
+                            key={day.value}
+                            className="rounded-2xl border border-white/10 bg-slate-950/40 p-4 space-y-3"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-medium text-white">{day.label}</span>
+                              <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={entry.is_available}
+                                  onChange={(e) =>
+                                    setWorkingHours((p) => ({
+                                      ...p,
+                                      [day.value]: { ...p[day.value], is_available: e.target.checked },
+                                    }))
+                                  }
+                                  className="rounded"
+                                />
+                                Open for bookings
+                              </label>
+                            </div>
+
+                            {entry.is_available && (
+                              <div className="grid gap-3 sm:grid-cols-4">
+                                <div>
+                                  <label className="block text-xs text-slate-400 mb-1">Start</label>
+                                  <input
+                                    type="time"
+                                    value={entry.start_time}
+                                    onChange={(e) =>
+                                      setWorkingHours((p) => ({
+                                        ...p,
+                                        [day.value]: { ...p[day.value], start_time: e.target.value },
+                                      }))
+                                    }
+                                    className="w-full rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white outline-none focus:border-sky-400"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs text-slate-400 mb-1">End</label>
+                                  <input
+                                    type="time"
+                                    value={entry.end_time}
+                                    onChange={(e) =>
+                                      setWorkingHours((p) => ({
+                                        ...p,
+                                        [day.value]: { ...p[day.value], end_time: e.target.value },
+                                      }))
+                                    }
+                                    className="w-full rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white outline-none focus:border-sky-400"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs text-slate-400 mb-1">Break start</label>
+                                  <input
+                                    type="time"
+                                    value={entry.break_start}
+                                    onChange={(e) =>
+                                      setWorkingHours((p) => ({
+                                        ...p,
+                                        [day.value]: { ...p[day.value], break_start: e.target.value },
+                                      }))
+                                    }
+                                    className="w-full rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white outline-none focus:border-sky-400"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs text-slate-400 mb-1">Break end</label>
+                                  <input
+                                    type="time"
+                                    value={entry.break_end}
+                                    onChange={(e) =>
+                                      setWorkingHours((p) => ({
+                                        ...p,
+                                        [day.value]: { ...p[day.value], break_end: e.target.value },
+                                      }))
+                                    }
+                                    className="w-full rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white outline-none focus:border-sky-400"
+                                  />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+
                       <button
-                        type="submit"
-                        disabled={isSubmittingOrg}
-                        className="rounded-full bg-sky-400 px-4 py-2 text-sm font-semibold text-slate-950 transition-colors hover:bg-sky-300 disabled:cursor-not-allowed disabled:opacity-60"
+                        onClick={() => void handleScheduleSave()}
+                        disabled={isSavingSchedule}
+                        className="w-full rounded-full bg-sky-400 hover:bg-sky-300 disabled:opacity-60 disabled:cursor-not-allowed px-4 py-2 text-sm font-semibold text-slate-950 transition-colors flex items-center justify-center gap-2"
                       >
-                        {isSubmittingOrg ? "Creating..." : "Create organization"}
+                        {isSavingSchedule ? (
+                          <>
+                            <Loader2 className="size-4 animate-spin" />
+                            Saving...
+                          </>
+                        ) : (
+                          <>
+                            <Check className="size-4" />
+                            Save Weekly Schedule
+                          </>
+                        )}
                       </button>
                     </div>
-                  </div>
+                  )}
+                </>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-white/10 bg-slate-950/40 p-4 text-center">
+                  <p className="text-sm text-slate-400">Create resources first</p>
                 </div>
-              </form>
+              )}
+            </div>
+          </FormSection>
 
-              <form
-                onSubmit={handleResourceSubmit}
-                className="rounded-3xl border border-white/10 bg-slate-950/70 p-6"
-              >
-                <div>
-                  <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
-                    Step 2
-                  </p>
-                  <h2 className="mt-2 text-2xl font-semibold text-white">
-                    Create resources
-                  </h2>
-                </div>
-
-                <div className="mt-5 grid gap-4 md:grid-cols-2">
-                  <div>
-                    <label className="mb-1 block text-sm text-slate-300">
-                      Resource name
-                    </label>
-                    <input
-                      value={resourceForm.name}
-                      onChange={(event) =>
-                        setResourceForm((current) => ({
-                          ...current,
-                          name: event.target.value,
-                        }))
-                      }
-                      placeholder="Dr. Avery, Room 2, Camera A"
-                      className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm text-slate-300">
-                      Type
-                    </label>
-                    <select
-                      value={resourceForm.type}
-                      onChange={(event) =>
-                        setResourceForm((current) => ({
-                          ...current,
-                          type: event.target.value as ResourceType,
-                        }))
-                      }
-                      className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none"
-                    >
-                      <option value="PROVIDER">Provider</option>
-                      <option value="ROOM">Room</option>
-                      <option value="EQUIPMENT">Equipment</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm text-slate-300">
-                      Capacity
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      value={resourceForm.capacity}
-                      onChange={(event) =>
-                        setResourceForm((current) => ({
-                          ...current,
-                          capacity: Number(event.target.value),
-                        }))
-                      }
-                      className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm text-slate-300">
-                      Description
-                    </label>
-                    <input
-                      value={resourceForm.description}
-                      onChange={(event) =>
-                        setResourceForm((current) => ({
-                          ...current,
-                          description: event.target.value,
-                        }))
-                      }
-                      placeholder="Optional"
-                      className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none"
-                    />
-                  </div>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isSubmittingResource}
-                  className="mt-5 rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-950 transition-colors hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {isSubmittingResource ? "Creating..." : "Create resource"}
-                </button>
-              </form>
-            </section>
-
-            <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-              <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
-                      Step 3
-                    </p>
-                    <h2 className="mt-2 text-2xl font-semibold text-white">
-                      Weekly working hours
-                    </h2>
-                  </div>
-
-                  <select
-                    value={selectedResourceId ?? ""}
-                    onChange={(event) =>
-                      setSelectedResourceId(Number(event.target.value) || null)
-                    }
-                    className="rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-white outline-none"
-                  >
-                    <option value="">Select resource</option>
-                    {resources.map((resource) => (
-                      <option key={resource.id} value={resource.id}>
-                        {resource.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="mt-5 space-y-3">
-                  {weekDays.map((day) => {
-                    const entry = workingHours[day.value];
-
-                    return (
-                      <div
-                        key={day.value}
-                        className="grid gap-3 rounded-2xl border border-white/10 bg-slate-950/65 p-4 md:grid-cols-[140px_100px_1fr_1fr_1fr_1fr]"
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="font-medium text-white">{day.label}</span>
-                          <label className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-slate-400">
-                            <input
-                              type="checkbox"
-                              checked={entry.is_available}
-                              onChange={(event) =>
-                                setWorkingHours((current) => ({
-                                  ...current,
-                                  [day.value]: {
-                                    ...current[day.value],
-                                    is_available: event.target.checked,
-                                  },
-                                }))
-                              }
-                            />
-                            Open
-                          </label>
-                        </div>
-                        <input
-                          type="time"
-                          value={entry.start_time}
-                          onChange={(event) =>
-                            setWorkingHours((current) => ({
-                              ...current,
-                              [day.value]: {
-                                ...current[day.value],
-                                start_time: event.target.value,
-                              },
-                            }))
-                          }
-                          className="rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white outline-none"
-                        />
-                        <input
-                          type="time"
-                          value={entry.end_time}
-                          onChange={(event) =>
-                            setWorkingHours((current) => ({
-                              ...current,
-                              [day.value]: {
-                                ...current[day.value],
-                                end_time: event.target.value,
-                              },
-                            }))
-                          }
-                          className="rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white outline-none"
-                        />
-                        <input
-                          type="time"
-                          value={entry.break_start}
-                          onChange={(event) =>
-                            setWorkingHours((current) => ({
-                              ...current,
-                              [day.value]: {
-                                ...current[day.value],
-                                break_start: event.target.value,
-                              },
-                            }))
-                          }
-                          className="rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white outline-none"
-                        />
-                        <input
-                          type="time"
-                          value={entry.break_end}
-                          onChange={(event) =>
-                            setWorkingHours((current) => ({
-                              ...current,
-                              [day.value]: {
-                                ...current[day.value],
-                                break_end: event.target.value,
-                              },
-                            }))
-                          }
-                          className="rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white outline-none"
-                        />
-                        <div className="flex items-center text-xs text-slate-400">
-                          {entry.is_available ? "Active booking window" : "Closed"}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <button
-                  type="button"
-                  disabled={isSavingSchedule || !selectedResourceId}
-                  onClick={() => void handleScheduleSave()}
-                  className="mt-5 rounded-full bg-sky-400 px-4 py-2 text-sm font-semibold text-slate-950 transition-colors hover:bg-sky-300 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {isSavingSchedule ? "Saving..." : "Save weekly schedule"}
-                </button>
-              </div>
-
-              <form
-                onSubmit={handleServiceSubmit}
-                className="rounded-3xl border border-white/10 bg-slate-950/70 p-6"
-              >
-                <div>
-                  <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
-                    Step 4
-                  </p>
-                  <h2 className="mt-2 text-2xl font-semibold text-white">
-                    Create services
-                  </h2>
-                </div>
-
-                <div className="mt-5 space-y-4">
-                  <input
+          {/* Services */}
+          <FormSection
+            title="Bookable Services"
+            subtitle="What customers can reserve"
+            step={4}
+            icon={Briefcase}
+            isOpen={openSections.service}
+            onToggle={() => setOpenSections((p) => ({ ...p, service: !p.service }))}
+            isCompleted={completionStatus.service}
+          >
+            <div className="space-y-4">
+              {selectedOrganizationId ? (
+                <>
+                  <FormInput
+                    label="Service Name"
+                    placeholder="Consultation, Session, Demo"
                     value={serviceForm.name}
-                    onChange={(event) =>
-                      setServiceForm((current) => ({
-                        ...current,
-                        name: event.target.value,
-                      }))
-                    }
-                    placeholder="Consultation, Demo, Follow-up"
-                    className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none"
+                    onChange={(v) => setServiceForm((p) => ({ ...p, name: v as string }))}
+                    error={serviceErrors.name}
                     required
                   />
-                  <textarea
+                  <FormInput
+                    label="Description"
+                    placeholder="What this service includes"
                     value={serviceForm.description}
-                    onChange={(event) =>
-                      setServiceForm((current) => ({
-                        ...current,
-                        description: event.target.value,
-                      }))
-                    }
-                    placeholder="What this service covers"
+                    onChange={(v) => setServiceForm((p) => ({ ...p, description: v as string }))}
                     rows={4}
-                    className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none"
                   />
 
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <input
-                      type="number"
-                      min="5"
-                      step="5"
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <FormInput
+                      label="Duration (minutes)"
                       value={serviceForm.duration_minutes}
-                      onChange={(event) =>
-                        setServiceForm((current) => ({
-                          ...current,
-                          duration_minutes: Number(event.target.value),
-                        }))
-                      }
-                      className="rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none"
-                    />
-                    <input
+                      onChange={(v) => setServiceForm((p) => ({ ...p, duration_minutes: Number(v) }))}
+                      error={serviceErrors.duration_minutes}
                       type="number"
-                      min="1"
+                      required
+                    />
+                    <FormInput
+                      label="Capacity"
                       value={serviceForm.capacity}
-                      onChange={(event) =>
-                        setServiceForm((current) => ({
-                          ...current,
-                          capacity: Number(event.target.value),
-                        }))
-                      }
-                      className="rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none"
-                    />
-                    <input
+                      onChange={(v) => setServiceForm((p) => ({ ...p, capacity: Number(v) }))}
+                      error={serviceErrors.capacity}
                       type="number"
-                      min="1"
-                      value={serviceForm.max_bookings_per_user}
-                      onChange={(event) =>
-                        setServiceForm((current) => ({
-                          ...current,
-                          max_bookings_per_user: Number(event.target.value),
-                        }))
-                      }
-                      className="rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none"
+                      required
                     />
-                    <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-sm text-slate-200">
+                    <FormInput
+                      label="Max bookings per user"
+                      value={serviceForm.max_bookings_per_user}
+                      onChange={(v) => setServiceForm((p) => ({ ...p, max_bookings_per_user: Number(v) }))}
+                      type="number"
+                    />
+                    <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-sm text-slate-200 cursor-pointer hover:bg-slate-850">
                       <input
                         type="checkbox"
                         checked={serviceForm.is_published}
-                        onChange={(event) =>
-                          setServiceForm((current) => ({
-                            ...current,
-                            is_published: event.target.checked,
-                          }))
-                        }
+                        onChange={(e) => setServiceForm((p) => ({ ...p, is_published: e.target.checked }))}
                       />
                       Publish immediately
                     </label>
                   </div>
 
-                  <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-sm text-slate-200">
+                  <label className="flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-sm text-slate-200 cursor-pointer hover:bg-slate-850">
                     <input
                       type="checkbox"
                       checked={serviceForm.requires_advance_payment}
-                      onChange={(event) =>
-                        setServiceForm((current) => ({
-                          ...current,
-                          requires_advance_payment: event.target.checked,
-                        }))
-                      }
+                      onChange={(e) => setServiceForm((p) => ({ ...p, requires_advance_payment: e.target.checked }))}
                     />
                     Require advance payment
                   </label>
 
                   {serviceForm.requires_advance_payment && (
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
+                    <FormInput
+                      label="Payment Amount ($)"
                       value={serviceForm.advance_payment_amount}
-                      onChange={(event) =>
-                        setServiceForm((current) => ({
-                          ...current,
-                          advance_payment_amount: Number(event.target.value),
-                        }))
-                      }
-                      className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none"
+                      onChange={(v) => setServiceForm((p) => ({ ...p, advance_payment_amount: Number(v) }))}
+                      error={serviceErrors.advance_payment_amount}
+                      type="number"
                     />
                   )}
 
-                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                    <p className="text-sm font-semibold text-white">
-                      Assign resources to this service
-                    </p>
-                    <div className="mt-4 grid gap-2">
-                      {resources.length === 0 ? (
-                        <p className="text-sm text-slate-300">
-                          Create at least one resource first.
-                        </p>
-                      ) : (
-                        resources.map((resource) => {
-                          const isSelected = selectedServiceResourceIds.includes(
-                            resource.id,
-                          );
-
+                  <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4 space-y-3">
+                    <p className="text-sm font-semibold text-white">Assign Resources</p>
+                    {resources.length > 0 ? (
+                      <div className="space-y-2">
+                        {resources.map((resource) => {
+                          const isSelected = selectedServiceResourceIds.includes(resource.id);
                           return (
                             <label
                               key={resource.id}
-                              className="flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-slate-200"
+                              className="flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-950/60 px-4 py-3 text-sm text-slate-200 cursor-pointer hover:bg-slate-950/80 transition-colors"
                             >
                               <input
                                 type="checkbox"
                                 checked={isSelected}
-                                onChange={(event) =>
-                                  setSelectedServiceResourceIds((current) =>
-                                    event.target.checked
-                                      ? [...current, resource.id]
-                                      : current.filter((item) => item !== resource.id),
+                                onChange={(e) =>
+                                  setSelectedServiceResourceIds((p) =>
+                                    e.target.checked
+                                      ? [...p, resource.id]
+                                      : p.filter((id) => id !== resource.id),
                                   )
                                 }
                               />
                               <span>
-                                {resource.name} · {resource.type} · capacity {resource.capacity}
+                                {resource.name} · {resource.type} (capacity {resource.capacity})
                               </span>
                             </label>
                           );
-                        })
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-slate-400">Create resources first</p>
+                    )}
+                  </div>
+
+                  <div className="flex gap-3">
+                    {editingService && (
+                      <button onClick={cancelEditingService} className="flex-1 rounded-full border border-white/15 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/10 flex items-center justify-center gap-2">
+                        <X className="size-4" /> Cancel
+                      </button>
+                    )}
+                    <button
+                      onClick={editingService ? handleEditService : handleServiceSubmit}
+                      disabled={isSubmittingService}
+                      className="flex-1 rounded-full bg-white hover:bg-slate-200 disabled:opacity-60 disabled:cursor-not-allowed text-slate-950 px-4 py-2 text-sm font-semibold transition-colors flex items-center justify-center gap-2"
+                    >
+                      {isSubmittingService ? (
+                        <><Loader2 className="size-4 animate-spin" /> Saving...</>
+                      ) : editingService ? (
+                        <><Check className="size-4" /> Update Service</>
+                      ) : (
+                        <><Plus className="size-4" /> Create Service</>
                       )}
-                    </div>
+                    </button>
                   </div>
-
-                  <button
-                    type="submit"
-                    disabled={isSubmittingService}
-                    className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-950 transition-colors hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {isSubmittingService ? "Creating..." : "Create service"}
-                  </button>
+                </>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-white/10 bg-slate-950/40 p-4 text-center">
+                  <p className="text-sm text-slate-400">Create an organization first</p>
                 </div>
-              </form>
-            </section>
+              )}
+            </div>
+          </FormSection>
+        </div>
 
-            <section className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-              <div className="rounded-3xl border border-white/10 bg-slate-950/70 p-6">
-                <div className="flex items-end justify-between gap-4">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
-                      Current services
-                    </p>
-                    <h2 className="mt-2 text-2xl font-semibold text-white">
-                      Published and draft
-                    </h2>
-                  </div>
+        {/* Services and bookings grid */}
+        {services.length > 0 || appointments.length > 0 ? (
+          <div className="grid gap-6 lg:grid-cols-2">
+            {/* Services */}
+            {services.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur"
+              >
+                <div className="mb-6">
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Catalog</p>
+                  <h2 className="mt-2 text-2xl font-semibold text-white">Published Services</h2>
                 </div>
 
-                <div className="mt-5 space-y-4">
-                  {services.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-white/10 bg-white/5 p-5 text-sm text-slate-300">
-                      No services created yet.
-                    </div>
-                  ) : (
-                    services.map((service) => (
-                      <article
-                        key={service.id}
-                        className="rounded-2xl border border-white/10 bg-white/5 p-5"
-                      >
-                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                          <div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <h3 className="text-xl font-semibold text-white">
-                                {service.name}
-                              </h3>
-                              <span className="rounded-full border border-white/10 px-3 py-1 text-xs uppercase tracking-[0.2em] text-slate-200">
-                                {service.is_published ? "Published" : "Draft"}
-                              </span>
-                            </div>
-                            <p className="mt-2 text-sm text-slate-300">
-                              {service.description || "No description."}
-                            </p>
-                            <p className="mt-3 text-xs text-slate-500">
-                              {service.duration_minutes} min · capacity {service.capacity}
-                            </p>
-                            <div className="mt-4 flex flex-wrap gap-2">
-                              {(serviceResourcesById[service.id] || []).map((resource) => (
-                                <span
-                                  key={resource.id}
-                                  className="rounded-full border border-sky-300/20 bg-sky-300/10 px-3 py-1 text-xs text-sky-100"
-                                >
-                                  {resource.name}
-                                </span>
+                <div className="space-y-4">
+                  {services.map((service) => (
+                    <motion.div
+                      key={service.id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="rounded-2xl border border-white/10 bg-slate-950/40 p-4 hover:bg-slate-950/60 transition-colors"
+                    >
+                      <div className="flex items-start justify-between gap-3 mb-3">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <h3 className="font-semibold text-white">{service.name}</h3>
+                            <span className={`text-xs px-2 py-1 rounded-full ${
+                              service.is_published
+                                ? "bg-emerald-500/20 text-emerald-300"
+                                : "bg-slate-600/20 text-slate-300"
+                            }`}>
+                              {service.is_published ? "Published" : "Draft"}
+                            </span>
+                          </div>
+                          <p className="text-sm text-slate-300 line-clamp-1">{service.description || "No description"}</p>
+                          <p className="text-xs text-slate-400 mt-2">{service.duration_minutes}min · {service.capacity} capacity</p>
+                        </div>
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          <button onClick={() => startEditingService(service)} title="Edit" className="p-2 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors"><Edit3 className="size-3.5" /></button>
+                          <button onClick={() => void handleCopyShareableLink(service)} title="Copy link" className="p-2 rounded-xl hover:bg-white/10 text-slate-400 hover:text-white transition-colors">{copiedLinkId === service.id ? <Check className="size-3.5 text-emerald-400" /> : <Link2 className="size-3.5" />}</button>
+                          <button onClick={() => { setEditingQuestionServiceId(editingQuestionServiceId === service.id ? null : service.id); if (editingQuestionServiceId !== service.id) void loadFormQuestions(service.id); }} title="Form questions" className={`p-2 rounded-xl hover:bg-white/10 transition-colors ${editingQuestionServiceId === service.id ? 'text-sky-400' : 'text-slate-400 hover:text-white'}`}><FileText className="size-3.5" /></button>
+                          <button onClick={() => void handlePublishToggle(service)} disabled={publishingServiceId === service.id} className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors disabled:opacity-50 ${service.is_published ? "border border-white/15 hover:bg-white/10 text-white" : "bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30"}`}>
+                            {publishingServiceId === service.id ? "..." : service.is_published ? "Unpublish" : "Publish"}
+                          </button>
+                          <button onClick={() => void handleDeleteService(service)} disabled={deletingServiceId === service.id} title="Delete" className="p-2 rounded-xl hover:bg-red-500/20 text-slate-400 hover:text-red-300 transition-colors disabled:opacity-50"><Trash2 className="size-3.5" /></button>
+                        </div>
+                      </div>
+                      {(serviceResourcesById[service.id] || []).length > 0 && (
+                        <div className="flex flex-wrap gap-1 mb-2">
+                          {(serviceResourcesById[service.id] || []).map((r) => (
+                            <span key={r.id} className="text-xs px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300">{r.name}</span>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Form Questions Builder (inline, toggled per service) */}
+                      <AnimatePresence>
+                        {editingQuestionServiceId === service.id && (
+                          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+                            <div className="mt-3 pt-3 border-t border-white/10 space-y-3">
+                              <p className="text-xs uppercase tracking-widest text-slate-400">Custom Booking Questions</p>
+                              {(formQuestionsByService[service.id] || []).map((q) => (
+                                <div key={q.id} className="flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm text-white truncate">{q.question_text} {q.is_required && <span className="text-red-400">*</span>}</p>
+                                    <p className="text-xs text-slate-400">{q.field_type} · Order {q.display_order}</p>
+                                  </div>
+                                  <div className="flex gap-1">
+                                    <button onClick={() => { setEditingQuestionId(q.id); setQuestionForm({ question_text: q.question_text, field_type: q.field_type, is_required: q.is_required, options: q.options || "", display_order: q.display_order }); }} className="p-1.5 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white"><Edit3 className="size-3" /></button>
+                                    <button onClick={() => void handleDeleteQuestion(service.id, q.id)} className="p-1.5 rounded-lg hover:bg-red-500/20 text-slate-400 hover:text-red-300"><Trash2 className="size-3" /></button>
+                                  </div>
+                                </div>
                               ))}
+                              <div className="rounded-xl border border-white/10 bg-slate-950/60 p-3 space-y-2">
+                                <input value={questionForm.question_text} onChange={(e) => setQuestionForm((p) => ({ ...p, question_text: e.target.value }))} placeholder="Question text" className="w-full rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white outline-none focus:border-sky-400" />
+                                <div className="flex gap-2">
+                                  <select value={questionForm.field_type} onChange={(e) => setQuestionForm((p) => ({ ...p, field_type: e.target.value }))} className="flex-1 rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white outline-none">
+                                    <option value="TEXT">Short Text</option>
+                                    <option value="TEXTAREA">Long Text</option>
+                                    <option value="CHECKBOX">Checkbox</option>
+                                    <option value="SELECT">Dropdown</option>
+                                    <option value="DATE">Date</option>
+                                    <option value="EMAIL">Email</option>
+                                    <option value="PHONE">Phone</option>
+                                  </select>
+                                  <input value={questionForm.display_order} onChange={(e) => setQuestionForm((p) => ({ ...p, display_order: Number(e.target.value) }))} type="number" placeholder="Order" className="w-20 rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white outline-none" />
+                                </div>
+                                {(questionForm.field_type === "SELECT") && (
+                                  <input value={questionForm.options} onChange={(e) => setQuestionForm((p) => ({ ...p, options: e.target.value }))} placeholder='Options (JSON: ["A","B","C"])' className="w-full rounded-lg border border-white/10 bg-slate-900 px-3 py-2 text-sm text-white outline-none" />
+                                )}
+                                <div className="flex items-center justify-between">
+                                  <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer"><input type="checkbox" checked={questionForm.is_required} onChange={(e) => setQuestionForm((p) => ({ ...p, is_required: e.target.checked }))} /> Required</label>
+                                  <div className="flex gap-2">
+                                    {editingQuestionId && <button onClick={() => { setEditingQuestionId(null); setQuestionForm({ question_text: "", field_type: "TEXT", is_required: false, options: "", display_order: 0 }); }} className="px-3 py-1 rounded-full text-xs text-white border border-white/15 hover:bg-white/10">Cancel</button>}
+                                    <button onClick={() => void handleQuestionSubmit(service.id)} disabled={isSubmittingQuestion || !questionForm.question_text.trim()} className="px-3 py-1 rounded-full text-xs font-semibold bg-sky-400 text-slate-950 hover:bg-sky-300 disabled:opacity-50">{isSubmittingQuestion ? "..." : editingQuestionId ? "Update" : "Add Question"}</button>
+                                  </div>
+                                </div>
+                              </div>
                             </div>
-                          </div>
-
-                          <div className="flex flex-wrap gap-3">
-                            <button
-                              type="button"
-                              disabled={publishingServiceId === service.id}
-                              onClick={() => void handlePublishToggle(service)}
-                              className="rounded-full border border-white/15 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              {publishingServiceId === service.id
-                                ? "Updating..."
-                                : service.is_published
-                                  ? "Unpublish"
-                                  : "Publish"}
-                            </button>
-                            <Link
-                              href={`/services/${service.id}`}
-                              className="rounded-full bg-sky-400 px-4 py-2 text-sm font-semibold text-slate-950 transition-colors hover:bg-sky-300"
-                            >
-                              Open booking page
-                            </Link>
-                          </div>
-                        </div>
-                      </article>
-                    ))
-                  )}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </motion.div>
+                  ))}
                 </div>
-              </div>
+              </motion.div>
+            )}
 
-              <div className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
-                    Recent bookings
-                  </p>
-                  <h2 className="mt-2 text-2xl font-semibold text-white">
-                    Customer activity
-                  </h2>
+            {/* Recent bookings */}
+            {appointments.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur"
+              >
+                <div className="mb-6">
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Activity</p>
+                  <h2 className="mt-2 text-2xl font-semibold text-white">Recent Bookings</h2>
                 </div>
 
-                <div className="mt-5 space-y-4">
-                  {sortedAppointments.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-white/10 bg-slate-950/60 p-5 text-sm text-slate-300">
-                      No bookings yet. Publish a service and ask a customer to book from the home page.
-                    </div>
-                  ) : (
-                    sortedAppointments.slice(0, 8).map((appointment) => (
-                      <article
-                        key={appointment.id}
-                        className="rounded-2xl border border-white/10 bg-slate-950/60 p-4"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="font-semibold text-white">
-                              {servicesById[appointment.service_id]?.name ||
-                                `Service #${appointment.service_id}`}
-                            </p>
-                            <p className="mt-1 text-sm text-slate-300">
-                              {formatDate(appointment.start_time)} ·{" "}
-                              {formatTime(appointment.start_time)} to{" "}
-                              {formatTime(appointment.end_time)}
-                            </p>
-                            <p className="mt-2 text-xs text-slate-500">
-                              Resource:{" "}
-                              {appointment.resource_id
-                                ? resourcesById[appointment.resource_id]?.name ||
-                                  `#${appointment.resource_id}`
-                                : "Unassigned"}
-                            </p>
-                          </div>
-                          <span className="rounded-full border border-white/10 px-3 py-1 text-xs uppercase tracking-[0.2em] text-slate-200">
-                            {appointment.status}
-                          </span>
-                        </div>
-                      </article>
-                    ))
-                  )}
+                <div className="space-y-3 max-h-96 overflow-y-auto">
+                  {sortedAppointments.slice(0, 8).map((appointment) => (
+                    <motion.div
+                      key={appointment.id}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      className="rounded-2xl border border-white/10 bg-slate-950/40 p-3 text-sm"
+                    >
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <p className="font-medium text-white line-clamp-1">
+                          {servicesById[appointment.service_id]?.name || `Service #${appointment.service_id}`}
+                        </p>
+                        <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0 ${
+                          appointment.status === "CONFIRMED"
+                            ? "bg-emerald-500/20 text-emerald-300"
+                            : appointment.status === "CANCELLED"
+                              ? "bg-red-500/20 text-red-300"
+                              : "bg-amber-500/20 text-amber-300"
+                        }`}>
+                          {appointment.status}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400">
+                        {formatDate(appointment.start_time)} · {formatTime(appointment.start_time)}
+                      </p>
+                    </motion.div>
+                  ))}
                 </div>
-
-                <div className="mt-5 rounded-2xl border border-white/10 bg-slate-950/60 p-4 text-sm text-slate-300">
-                  Today: {toDateInputValue()}.
-                </div>
-              </div>
-            </section>
-          </>
-        )}
+              </motion.div>
+            )}
+          </div>
+        ) : null}
       </div>
     </AuthGuard>
   );

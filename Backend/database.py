@@ -1,8 +1,10 @@
+from typing import Any
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from config import settings
 
-engine_kwargs = {"echo": settings.DEBUG}
+engine_kwargs: dict[str, Any] = {"echo": settings.DEBUG}
 if settings.DATABASE_URL.startswith("sqlite"):
     engine_kwargs["connect_args"] = {"check_same_thread": False}
 

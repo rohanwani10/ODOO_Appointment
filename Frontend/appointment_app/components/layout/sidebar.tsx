@@ -4,28 +4,39 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { 
   LayoutDashboard, 
-  CalendarDays, 
   Clock, 
   Settings, 
-  Plus,
-  Users,
-  MessageSquare,
-  Sparkles
+  Building2,
+  BriefcaseBusiness,
+  ShieldCheck,
 } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 
-const sidebarItems = [
-  { icon: LayoutDashboard, label: "Overview", href: "/dashboard" },
-  { icon: CalendarDays, label: "Availability", href: "/dashboard/availability" },
-  { icon: Clock, label: "Bookings", href: "/appointments" },
-  { icon: MessageSquare, label: "Feedback", href: "/feedback" },
-  { icon: Users, label: "Team", href: "/team" },
-  { icon: Settings, label: "Settings", href: "/settings" },
+const baseSidebarItems = [
+  { icon: LayoutDashboard, label: "Overview", href: "/dashboard", match: "exact" as const },
+  { icon: Clock, label: "Appointments", href: "/appointments", match: "prefix" as const },
+  { icon: Settings, label: "Settings", href: "/settings", match: "prefix" as const },
+];
+
+const organizerSidebarItems = [
+  { icon: Building2, label: "Workspace", href: "/organizer", match: "exact" as const },
+  { icon: BriefcaseBusiness, label: "Services", href: "/organizer/services", match: "prefix" as const },
+];
+
+const adminSidebarItems = [
+  { icon: ShieldCheck, label: "Admin", href: "/admin", match: "prefix" as const },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { isOrganizer, isAdmin } = useAuth();
+  const sidebarItems = [
+    ...baseSidebarItems,
+    ...(isOrganizer ? organizerSidebarItems : []),
+    ...(isAdmin ? adminSidebarItems : []),
+  ];
 
   return (
     <aside className="fixed left-0 top-0 z-50 flex h-screen w-20 flex-col items-center border-r border-white/5 bg-slate-950/80 pb-8 pt-6 backdrop-blur-xl">
@@ -35,13 +46,12 @@ export function Sidebar() {
       </Link>
 
       <div className="flex flex-1 flex-col items-center gap-4">
-        <button className="group relative mb-4 flex size-12 items-center justify-center rounded-2xl border border-white/10 bg-white/5 transition-all hover:bg-white/10">
-          <Plus className="size-6 text-white transition-transform group-hover:rotate-90" />
-        </button>
-
         <nav className="flex flex-col items-center gap-4">
           {sidebarItems.map((item) => {
-            const isActive = pathname === item.href;
+            const isActive =
+              item.match === "prefix"
+                ? pathname === item.href || pathname?.startsWith(`${item.href}/`)
+                : pathname === item.href;
             return (
               <Link
                 key={item.href}
@@ -72,16 +82,7 @@ export function Sidebar() {
         </nav>
       </div>
 
-      <div className="mt-auto flex flex-col items-center gap-6">
-        <button className="group relative flex size-12 items-center justify-center rounded-2xl text-slate-400 transition-all hover:bg-white/5 hover:text-white">
-          <Sparkles className="size-5" />
-          <div className="absolute -top-1 -right-1 size-2 rounded-full bg-sky-400" />
-        </button>
-        
-        <div className="size-10 rounded-full border border-white/10 bg-white/5 p-0.5">
-           <div className="h-full w-full rounded-full bg-gradient-to-tr from-indigo-500 via-sky-400 to-emerald-400" />
-        </div>
-      </div>
+      <div className="mt-auto" />
     </aside>
   );
 }

@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
 import {
   ArrowRight,
   Check,
@@ -11,8 +10,6 @@ import {
   Video,
   X,
 } from "lucide-react";
-import { apiFetch } from "@/lib/api";
-
 type PlanName = "Free" | "Starter" | "Pro";
 
 type PricingRow = {
@@ -20,11 +17,6 @@ type PricingRow = {
   free: string | boolean;
   starter: string | boolean;
   pro: string | boolean;
-};
-
-type BillingSnapshot = {
-  updated_at?: string;
-  unavailable_message?: string;
 };
 
 const comparisonRows: PricingRow[] = [
@@ -175,41 +167,9 @@ function FeatureIcon({ value }: { value: string | boolean }) {
 }
 
 export default function PricingPage() {
-  const [billingData, setBillingData] = useState<BillingSnapshot | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [fallbackMessage, setFallbackMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    let isCancelled = false;
-
-    async function loadBillingData() {
-      try {
-        const data = await apiFetch<BillingSnapshot>("/api/billing/pricing");
-
-        if (!isCancelled) {
-          setBillingData(data);
-          setFallbackMessage(null);
-        }
-      } catch {
-        if (!isCancelled) {
-          setBillingData(null);
-          setFallbackMessage(
-            "Live billing data is unavailable right now, so the plans below show the current published pricing.",
-          );
-        }
-      } finally {
-        if (!isCancelled) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    void loadBillingData();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, []);
+  const fallbackMessage =
+    "Published pricing is shown below. Live billing automation is not enabled in this backend build.";
+  const isLoading = false;
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.12),transparent_38%),linear-gradient(180deg,#f8fafc_0%,#eef2ff_32%,#ffffff_100%)] text-slate-950 dark:bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.14),transparent_30%),linear-gradient(180deg,#020617_0%,#0f172a_100%)] dark:text-white">
@@ -229,11 +189,9 @@ export default function PricingPage() {
               Choose a plan that fits your workflow today and move up as your
               scheduling needs grow. No hidden fees, no confusing usage math.
             </p>
-            {billingData?.updated_at && (
-              <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
-                Last refreshed {billingData.updated_at}
-              </p>
-            )}
+            <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
+              {fallbackMessage}
+            </p>
           </div>
         </section>
 

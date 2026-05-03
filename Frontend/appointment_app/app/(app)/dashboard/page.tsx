@@ -22,7 +22,6 @@ import { motion } from "framer-motion";
 import { useAuth } from "@/hooks/useAuth";
 import { apiFetch } from "@/lib/api";
 import { formatDate, formatDateTime, formatTime } from "@/lib/dates";
-import { getErrorMessage } from "@/lib/errors";
 import type { Appointment } from "@/types/booking";
 import type { Resource } from "@/types/resource";
 import type { Service } from "@/types/service";
@@ -137,14 +136,15 @@ export default function DashboardPage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sectionErrors, setSectionErrors] = useState<SectionErrors>({});
+  const [nowMs, setNowMs] = useState(() => new Date().getTime());
 
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [autoRefreshNotice, setAutoRefreshNotice] = useState<string | null>(null);
 
   const isFresh = useMemo(() => {
     if (!lastUpdated) return false;
-    return Date.now() - lastUpdated.getTime() < 60 * 1000;
-  }, [lastUpdated]);
+    return nowMs - lastUpdated.getTime() < 60 * 1000;
+  }, [lastUpdated, nowMs]);
 
   const loadDashboard = useCallback(
     async (options?: { refresh?: boolean; source?: "manual" | "auto" | "initial" }) => {
@@ -239,7 +239,11 @@ export default function DashboardPage() {
   );
 
   useEffect(() => {
-    loadDashboard({ source: "initial" });
+    const id = window.setTimeout(() => {
+      void loadDashboard({ source: "initial" });
+    }, 0);
+
+    return () => window.clearTimeout(id);
   }, [loadDashboard]);
 
   useEffect(() => {
@@ -249,6 +253,11 @@ export default function DashboardPage() {
 
     return () => window.clearInterval(id);
   }, [loadDashboard]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(new Date().getTime()), 30 * 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   /**
    * Sorting and filtering appointment collections is the most reused computation.
@@ -263,11 +272,10 @@ export default function DashboardPage() {
    * Upcoming events for next-event card and active booking count.
    */
   const upcomingAppointments = useMemo(() => {
-    const now = Date.now();
     return sortedAppointments.filter(
-      (a) => a.status !== "CANCELLED" && new Date(a.start_time).getTime() >= now,
+      (a) => a.status !== "CANCELLED" && new Date(a.start_time).getTime() >= nowMs,
     );
-  }, [sortedAppointments]);
+  }, [sortedAppointments, nowMs]);
 
   const nextAppointment = upcomingAppointments[0] ?? null;
 
@@ -276,7 +284,7 @@ export default function DashboardPage() {
   }, [sortedAppointments]);
 
   const last30Stats = useMemo(() => {
-    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const thirtyDaysAgo = nowMs - 30 * 24 * 60 * 60 * 1000;
     const windowed = appointments.filter(
       (a) => new Date(a.start_time).getTime() >= thirtyDaysAgo,
     );
@@ -284,7 +292,7 @@ export default function DashboardPage() {
     const total = windowed.length;
     const percentage = total === 0 ? 0 : Math.round((confirmed / total) * 100);
     return { total, confirmed, percentage };
-  }, [appointments]);
+  }, [appointments, nowMs]);
 
   const monthlyProgress = useMemo(() => {
     if (isAdmin && adminDashboard) {
@@ -554,7 +562,7 @@ export default function DashboardPage() {
               <p className="text-base font-semibold text-white">No recent activity yet</p>
               <p className="mt-1 text-sm text-slate-300">Book a service to start seeing your activity timeline.</p>
               <Link
-                href="/bookings"
+                href="/"
                 className="mt-4 inline-flex min-h-11 items-center rounded-xl bg-white px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/80"
               >
                 Browse Services
@@ -606,6 +614,9 @@ export default function DashboardPage() {
         <section role="region" aria-label="Quick actions and workspace" className="space-y-5">
           <div className="glass rounded-[32px] p-6 sm:p-8">
             <h2 className="mb-5 text-xl font-bold text-white">Quick Actions</h2>
+            {isOrganizer && !isInitialLoading ? (
+              <p className="mb-4 text-xs text-slate-300">{resources.length} resources connected</p>
+            ) : null}
 
             {isInitialLoading ? (
               <div className="space-y-3">
@@ -621,10 +632,12 @@ export default function DashboardPage() {
               <div className="grid gap-3">
                 {[
                   {
-                    label: "Browse Services",
-                    href: "/bookings",
+                    label: isOrganizer ? "Service Manager" : "Browse Services",
+                    href: isOrganizer ? "/organizer/services" : "/",
                     icon: Plus,
-                    tooltip: "Find and book a new service",
+                    tooltip: isOrganizer
+                      ? "Create, edit, and publish bookable services"
+                      : "Find and book a new service",
                   },
                   {
                     label: "Appointments",
@@ -633,12 +646,12 @@ export default function DashboardPage() {
                     tooltip: "Review your upcoming and past appointments",
                   },
                   {
-                    label: isOrganizer ? "Availability" : "Feedback",
-                    href: isOrganizer ? "/dashboard/availability" : "/feedback",
+                    label: isOrganizer ? "Resource Setup" : "Profile",
+                    href: isOrganizer ? "/organizer" : "/settings",
                     icon: isOrganizer ? Wrench : Shield,
                     tooltip: isOrganizer
-                      ? "Manage scheduling windows and calendar sync"
-                      : "Share feedback and improve service quality",
+                      ? "Manage organizations, resources, and working hours"
+                      : "Update your account and preferences",
                   },
                 ].map((action) => (
                   <Link
@@ -721,7 +734,7 @@ export default function DashboardPage() {
             <p className="text-lg font-semibold text-white">No upcoming events</p>
             <p className="mt-1 text-sm text-slate-300">Your schedule is free right now.</p>
             <Link
-              href="/bookings"
+              href="/"
               className="mt-4 inline-flex min-h-11 items-center rounded-xl bg-white px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/80"
             >
               Browse Services

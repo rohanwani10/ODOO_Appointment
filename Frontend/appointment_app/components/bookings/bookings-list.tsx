@@ -17,8 +17,27 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cancelBooking } from "@/lib/actions/calendar";
-import type { HostBooking } from "@/sanity/queries/bookings";
 import type { AttendeeStatus } from "@/components/calendar/types";
+
+interface HostBooking {
+  _id?: string | number;
+  id?: string | number;
+  guestName?: string;
+  guestEmail?: string;
+  customer_id?: number;
+  startTime?: string;
+  start_time?: string;
+  endTime?: string;
+  end_time?: string;
+  status?: string;
+  notes?: string;
+  meetLink?: string;
+  meet_link?: string;
+  googleEventId?: string;
+  google_event_id?: string;
+  meetLink?: string;
+  googleEventId?: string;
+}
 
 type BookingWithStatuses = HostBooking & {
   guestStatus?: AttendeeStatus;
@@ -32,8 +51,30 @@ export function BookingsList({ bookings }: BookingsListProps) {
   const [isPending, startTransition] = useTransition();
   const [cancellingId, setCancellingId] = useState<string | null>(null);
 
+  const normalizedBookings = bookings.map((booking) => {
+    const id = String(booking._id ?? booking.id ?? "");
+    const startTime = booking.startTime ?? booking.start_time ?? "";
+    const endTime = booking.endTime ?? booking.end_time ?? "";
+
+    return {
+      id,
+      guestName:
+        booking.guestName ||
+        (booking.customer_id ? `Customer #${booking.customer_id}` : "Customer"),
+      guestEmail: booking.guestEmail || "Email unavailable",
+      startTime,
+      endTime,
+      notes: booking.notes,
+      meetLink: booking.meetLink ?? booking.meet_link,
+      googleEventId: booking.googleEventId ?? booking.google_event_id,
+      guestStatus:
+        booking.guestStatus ??
+        (booking.status === "CONFIRMED" ? "accepted" : undefined),
+    };
+  });
+
   // Show upcoming confirmed bookings (cancelled ones are filtered out by query)
-  const activeBookings = bookings.filter((b) => {
+  const activeBookings = normalizedBookings.filter((b) => {
     return isFuture(new Date(b.startTime));
   });
 
@@ -195,11 +236,11 @@ export function BookingsList({ bookings }: BookingsListProps) {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleCancel(booking._id)}
+                            onClick={() => handleCancel(booking.id)}
                             disabled={isPending}
                             className="text-red-600 hover:text-red-700 hover:bg-red-50"
                           >
-                            {cancellingId === booking._id ? (
+                            {cancellingId === booking.id ? (
                               <Loader2 className="h-4 w-4 animate-spin" />
                             ) : (
                               <>

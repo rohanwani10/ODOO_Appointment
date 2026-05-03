@@ -137,12 +137,15 @@ async def create_calendar_event(
 ):
     """Create a Google Calendar event with optional Google Meet"""
     try:
+        start_time = str(event_data.get("start_time") or "")
+        end_time = str(event_data.get("end_time") or "")
+
         result = await GoogleCalendarService.create_event(
             user=current_user,
             title=event_data.get("title", ""),
             description=event_data.get("description", ""),
-            start_time=event_data.get("start_time"),
-            end_time=event_data.get("end_time"),
+            start_time=start_time,
+            end_time=end_time,
             attendees=event_data.get("attendees", []),
             meet_enabled=event_data.get("meet_enabled", False)
         )

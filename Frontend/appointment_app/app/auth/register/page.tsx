@@ -22,6 +22,9 @@ const roles = [
     color: "text-indigo-300",
   },
 ];
+import { Users, Calendar, ArrowRight, Sparkles } from "lucide-react";
+import { motion } from "framer-motion";
+import { cn } from "@/lib/utils";
 
 export default function RegisterPage() {
   const router = useRouter();

@@ -12,13 +12,32 @@ export interface Service {
   advance_payment_amount?: number | null;
   created_by: number;
   created_at: string;
+  updated_at?: string | null;
+}
+
+export type ServiceAssignmentType = "MANUAL" | "AUTO";
+
+export interface ServiceResourceAssignment {
+  id: number;
+  service_id: number;
+  resource_id: number;
+  is_required: boolean;
+  assignment_type: ServiceAssignmentType;
+  created_at: string;
 }
 
 export interface FormQuestion {
   id: number;
   service_id: number;
   question_text: string;
-  field_type: string;
+  field_type:
+    | "TEXT"
+    | "EMAIL"
+    | "PHONE"
+    | "TEXTAREA"
+    | "SELECT"
+    | "CHECKBOX"
+    | "DATE";
   is_required: boolean;
   options?: string | null;
   display_order: number;

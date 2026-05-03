@@ -26,6 +26,7 @@ export interface BookingFormResponse {
   id: number;
   appointment_id: number;
   question_id: number;
+  question_text?: string;
   response: string;
   created_at: string;
 }

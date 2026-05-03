@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Suspense, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Mail,
   Lock,
@@ -19,6 +21,86 @@ import { getErrorMessage } from "@/lib/errors";
 import { GoogleLoginButton } from "@/components/auth/google-login-button";
 
 export default function LoginPage() {
+type FieldErrors = {
+  email?: string;
+  password?: string;
+};
+
+function validateEmail(input: string): string | undefined {
+  const value = input.trim();
+  if (!value) return "Email is required.";
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(value)) return "Enter a valid email address.";
+  return undefined;
+}
+
+function getFriendlyGoogleError(message: string): string {
+  const normalized = message.toLowerCase();
+  if (normalized.includes("google_client_id") || normalized.includes("client id")) {
+    return "Google sign-in is temporarily unavailable due to a configuration issue. Please use email/password for now.";
+  }
+  if (normalized.includes("popup") || normalized.includes("closed")) {
+    return "Google sign-in was canceled. Please try again.";
+  }
+  if (normalized.includes("network") || normalized.includes("fetch")) {
+    return "Unable to reach Google sign-in. Check your internet connection and retry.";
+  }
+  return "Google sign-in failed. Please retry or continue with email/password.";
+}
+
+function AuthAnimatedBackground({ reduceMotion }: { reduceMotion: boolean }) {
+  return (
+    <div className="absolute inset-0 z-0" aria-hidden="true">
+      <motion.div
+        animate={
+          reduceMotion
+            ? undefined
+            : {
+                scale: [1, 1.2, 1],
+                rotate: [0, 90, 0],
+                opacity: [0.1, 0.2, 0.1],
+              }
+        }
+        transition={
+          reduceMotion
+            ? { duration: 0 }
+            : { duration: 20, repeat: Infinity, ease: [0, 0, 1, 1] as const }
+        }
+        className="absolute -left-40 -top-40 size-[600px] rounded-full bg-primary/20 blur-[120px]"
+      />
+      <motion.div
+        animate={
+          reduceMotion
+            ? undefined
+            : {
+                scale: [1, 1.1, 1],
+                rotate: [0, -45, 0],
+                opacity: [0.05, 0.15, 0.05],
+              }
+        }
+        transition={
+          reduceMotion
+            ? { duration: 0 }
+            : { duration: 15, repeat: Infinity, ease: [0, 0, 1, 1] as const }
+        }
+        className="absolute -bottom-40 -right-40 size-[500px] rounded-full bg-indigo-500/20 blur-[100px]"
+      />
+      <div className="absolute inset-0 bg-dashboard-grid opacity-20" />
+    </div>
+  );
+}
+
+function LoginPageFallback() {
+  return (
+    <div className="relative min-h-screen overflow-hidden bg-background text-white">
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-t-2 border-sky-400" />
+      </div>
+    </div>
+  );
+}
+
+function LoginPageContent() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -102,6 +184,19 @@ export default function LoginPage() {
               Access your bookings, calendar sync, and scheduling tools.
             </p>
           </div>
+        <main className="relative z-10 flex min-h-screen items-center justify-center px-4 pt-24 sm:px-6">
+          <motion.div
+            initial={shouldReduceMotion ? { opacity: 1 } : { opacity: 0, y: 20 }}
+            animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
+            transition={{ duration: shouldReduceMotion ? 0 : 0.5, ease: [0, 0, 0.58, 1] as const }}
+            className="w-full max-w-md"
+          >
+            <div className="mb-6 flex justify-center sm:mb-8">
+              <div className="glass inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-primary shadow-2xl">
+                <Sparkles className="size-3.5" />
+                Intelligence Awaits
+              </div>
+            </div>
 
           {error && (
             <div className="mb-6 rounded-lg border border-red-300 bg-red-50 p-4 flex items-start gap-3 dark:border-red-400/30 dark:bg-red-500/10">
@@ -223,5 +318,13 @@ export default function LoginPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginPageFallback />}>
+      <LoginPageContent />
+    </Suspense>
   );
 }

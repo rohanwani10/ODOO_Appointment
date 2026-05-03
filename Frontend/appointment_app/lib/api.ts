@@ -3,7 +3,7 @@ import { getAccessToken, getRefreshToken, setTokens, removeTokens } from './auth
 const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '');
 
 type FetchOptions = RequestInit & {
-  params?: Record<string, string>;
+  params?: Record<string, string | number | boolean | undefined | null>;
 };
 
 let isRefreshing = false;
@@ -50,14 +50,29 @@ async function readApiResponse<T>(response: Response): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+function buildUrl(endpoint: string, params?: FetchOptions['params']) {
+  const base =
+    API_BASE_URL ||
+    (typeof window === 'undefined' ? 'http://localhost:3000' : window.location.origin);
+  const url = new URL(
+    API_BASE_URL ? `${API_BASE_URL}${endpoint}` : endpoint,
+    base,
+  );
+
+  if (params) {
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        url.searchParams.set(key, String(value));
+      }
+    });
+  }
+
+  return API_BASE_URL ? url.toString() : `${url.pathname}${url.search}`;
+}
+
 export async function apiFetch<T>(endpoint: string, options: FetchOptions = {}): Promise<T> {
   const { params, ...init } = options;
-
-  let url = `${API_BASE_URL}${endpoint}`;
-  if (params) {
-    const searchParams = new URLSearchParams(params);
-    url += `?${searchParams.toString()}`;
-  }
+  const url = buildUrl(endpoint, params);
 
   const accessToken = getAccessToken();
   const refreshTokenValue = getRefreshToken();
@@ -93,7 +108,7 @@ export async function apiFetch<T>(endpoint: string, options: FetchOptions = {}):
       if (!isRefreshing) {
         isRefreshing = true;
         try {
-          const refreshResponse = await fetch(`${API_BASE_URL}/api/auth/refresh-token`, {
+          const refreshResponse = await fetch(buildUrl('/api/auth/refresh-token'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ refresh_token: refreshTokenValue }),

@@ -1,9 +1,10 @@
 "use client";
 
+import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { GoogleCallbackHandler } from "@/components/auth/google-callback-handler";
 
-export default function GoogleCallbackPage() {
+function GoogleCallbackPageContent() {
   const searchParams = useSearchParams();
   const code = searchParams.get("code");
   const error = searchParams.get("error");
@@ -20,6 +21,9 @@ export default function GoogleCallbackPage() {
           </div>
         ) : code ? (
           <GoogleCallbackHandler />
+          <div>
+            <GoogleCallbackHandler />
+          </div>
         ) : (
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
@@ -30,5 +34,19 @@ export default function GoogleCallbackPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function GoogleCallbackPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-slate-100 text-slate-700 dark:from-slate-900 dark:to-slate-800 dark:text-slate-200">
+          Processing authentication...
+        </div>
+      }
+    >
+      <GoogleCallbackPageContent />
+    </Suspense>
   );
 }

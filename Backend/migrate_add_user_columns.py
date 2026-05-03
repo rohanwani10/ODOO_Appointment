@@ -1,14 +1,17 @@
 """
-Migration script to add missing columns to users table.
-This script adds all missing columns to match the User model schema.
+Compatibility wrapper for the legacy user-column migration entrypoint.
+
+The backend now performs additive schema synchronization across all tables,
+so this script delegates to the shared schema manager instead of maintaining
+one-off SQL for the users table.
 """
 
-from sqlalchemy import text
-from database import engine
 import sys
 
-def migrate():
-    """Add all missing columns to users table."""
+from schema_manager import sync_schema
+
+
+def migrate() -> bool:
     try:
         with engine.connect() as connection:
             # Get all existing columns in users table
@@ -75,9 +78,12 @@ def migrate():
         print(f"\nFAILED Migration failed with error: {str(e)}")
         import traceback
         traceback.print_exc()
+        sync_schema()
+        return True
+    except Exception as exc:
+        print(f"[ERROR] Schema sync failed: {exc}")
         return False
 
+
 if __name__ == "__main__":
-    print("Starting migration: Ensuring all user columns exist...\n")
-    success = migrate()
-    sys.exit(0 if success else 1)
+    sys.exit(0 if migrate() else 1)

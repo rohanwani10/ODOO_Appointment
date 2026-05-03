@@ -7,9 +7,46 @@ import { useAuth } from "@/hooks/useAuth";
 import { apiFetch } from "@/lib/api";
 import { addDays, formatDate, formatTime, toDateInputValue } from "@/lib/dates";
 import { getErrorMessage } from "@/lib/errors";
+import { parseQuestionOptions } from "@/lib/organizer-services";
 import type { Appointment } from "@/types/booking";
 import type { Resource } from "@/types/resource";
-import type { AvailableSlot, Service } from "@/types/service";
+import type { AvailableSlot, FormQuestion, Service } from "@/types/service";
+
+function getQuestionError(
+  question: FormQuestion,
+  response: string | undefined,
+) {
+  const trimmedResponse = response?.trim() ?? "";
+
+  if (question.is_required && trimmedResponse.length === 0) {
+    return "This question is required.";
+  }
+
+  if (trimmedResponse.length === 0) {
+    return undefined;
+  }
+
+  if (question.field_type === "EMAIL") {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(trimmedResponse)) {
+      return "Enter a valid email address.";
+    }
+  }
+
+  return undefined;
+}
+
+function getBookingLimitHint(limit?: number | null) {
+  if (!limit) {
+    return null;
+  }
+
+  if (limit === 1) {
+    return "This service allows 1 active upcoming booking per customer.";
+  }
+
+  return `This service allows ${limit} active upcoming bookings per customer.`;
+}
 
 export default function ServiceBookingPage() {
   const params = useParams<{ serviceId: string }>();
@@ -19,12 +56,15 @@ export default function ServiceBookingPage() {
 
   const [service, setService] = useState<Service | null>(null);
   const [resources, setResources] = useState<Resource[]>([]);
+  const [questions, setQuestions] = useState<FormQuestion[]>([]);
   const [slots, setSlots] = useState<AvailableSlot[]>([]);
   const [selectedDate, setSelectedDate] = useState(
     toDateInputValue(addDays(new Date(), 1)),
   );
   const [selectedSlot, setSelectedSlot] = useState<AvailableSlot | null>(null);
   const [notes, setNotes] = useState("");
+  const [questionResponses, setQuestionResponses] = useState<Record<number, string>>({});
+  const [questionErrors, setQuestionErrors] = useState<Record<number, string>>({});
   const [pageError, setPageError] = useState<string | null>(null);
   const [bookingError, setBookingError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -38,6 +78,10 @@ export default function ServiceBookingPage() {
 
     return resources.find((resource) => resource.id === selectedSlot.resource_id) ?? null;
   }, [resources, selectedSlot]);
+  const bookingLimitHint = useMemo(
+    () => getBookingLimitHint(service?.max_bookings_per_user),
+    [service?.max_bookings_per_user],
+  );
 
   useEffect(() => {
     let isCancelled = false;
@@ -50,14 +94,16 @@ export default function ServiceBookingPage() {
       }
 
       try {
-        const [serviceData, resourceData] = await Promise.all([
+        const [serviceData, resourceData, questionData] = await Promise.all([
           apiFetch<Service>(`/api/services/${serviceId}`),
           apiFetch<Resource[]>(`/api/services/${serviceId}/resources`),
+          apiFetch<FormQuestion[]>(`/api/services/${serviceId}/form-questions`),
         ]);
 
         if (!isCancelled) {
           setService(serviceData);
           setResources(resourceData);
+          setQuestions(questionData);
         }
       } catch (loadError) {
         if (!isCancelled) {
@@ -128,6 +174,15 @@ export default function ServiceBookingPage() {
     };
   }, [selectedDate, serviceId]);
 
+  function updateQuestionResponse(questionId: number, value: string) {
+    setQuestionResponses((current) => ({ ...current, [questionId]: value }));
+    setQuestionErrors((current) => {
+      const next = { ...current };
+      delete next[questionId];
+      return next;
+    });
+  }
+
   async function handleBooking() {
     if (!selectedSlot) {
       setBookingError("Select a slot before creating an appointment.");
@@ -136,6 +191,20 @@ export default function ServiceBookingPage() {
 
     if (!isAuthenticated) {
       router.push(`/auth/login?next=${encodeURIComponent(`/services/${serviceId}`)}`);
+      return;
+    }
+
+    const nextQuestionErrors = questions.reduce<Record<number, string>>((accumulator, question) => {
+      const error = getQuestionError(question, questionResponses[question.id]);
+      if (error) {
+        accumulator[question.id] = error;
+      }
+      return accumulator;
+    }, {});
+
+    if (Object.keys(nextQuestionErrors).length > 0) {
+      setQuestionErrors(nextQuestionErrors);
+      setBookingError("Complete the required booking questions before confirming.");
       return;
     }
 
@@ -154,6 +223,24 @@ export default function ServiceBookingPage() {
           notes: notes.trim() || null,
         }),
       });
+
+      const populatedResponses = questions
+        .map((question) => ({
+          question_id: question.id,
+          response: questionResponses[question.id]?.trim() ?? "",
+        }))
+        .filter((item) => item.response.length > 0);
+
+      if (populatedResponses.length > 0) {
+        try {
+          await apiFetch(`/api/appointments/${appointment.id}/form-responses`, {
+            method: "POST",
+            body: JSON.stringify({ responses: populatedResponses }),
+          });
+        } catch (responseError) {
+          console.error("Failed to submit booking form responses", responseError);
+        }
+      }
 
       router.push(`/appointments/${appointment.id}`);
     } catch (error) {
@@ -261,7 +348,10 @@ export default function ServiceBookingPage() {
                 type="date"
                 value={selectedDate}
                 min={toDateInputValue()}
-                onChange={(event) => setSelectedDate(event.target.value)}
+                onChange={(event) => {
+                  setSelectedDate(event.target.value);
+                  setBookingError(null);
+                }}
                 className="rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none focus:border-sky-400/70"
               />
             </div>
@@ -286,7 +376,10 @@ export default function ServiceBookingPage() {
                       <button
                         key={`${slot.resource_id}-${slot.start_time}`}
                         type="button"
-                        onClick={() => setSelectedSlot(slot)}
+                        onClick={() => {
+                          setSelectedSlot(slot);
+                          setBookingError(null);
+                        }}
                         className={`rounded-2xl border p-4 text-left transition-colors ${
                           isSelected
                             ? "border-sky-300/40 bg-sky-400/10"
@@ -312,6 +405,120 @@ export default function ServiceBookingPage() {
                 </div>
               )}
             </div>
+
+            {questions.length > 0 ? (
+              <div className="mt-8 rounded-3xl border border-white/10 bg-white/[0.04] p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.2em] text-slate-400">
+                      Booking questions
+                    </p>
+                    <h3 className="mt-2 text-xl font-semibold text-white">
+                      Tell the organizer what they need to know
+                    </h3>
+                  </div>
+                  <span className="rounded-full border border-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-200">
+                    {questions.length} item{questions.length === 1 ? "" : "s"}
+                  </span>
+                </div>
+
+                <div className="mt-6 space-y-5">
+                  {questions.map((question) => {
+                    const parsedOptions = parseQuestionOptions(question.options);
+                    const responseValue = questionResponses[question.id] ?? "";
+                    const fieldError = questionErrors[question.id];
+
+                    return (
+                      <div key={question.id}>
+                        <label className="mb-2 block text-sm font-medium text-slate-200">
+                          {question.question_text}
+                          {question.is_required ? (
+                            <span className="ml-1 text-red-300">*</span>
+                          ) : null}
+                        </label>
+
+                        {question.field_type === "TEXTAREA" ? (
+                          <textarea
+                            value={responseValue}
+                            onChange={(event) =>
+                              updateQuestionResponse(question.id, event.target.value)
+                            }
+                            rows={4}
+                            className={`w-full rounded-2xl border bg-slate-950/70 px-4 py-3 text-white outline-none transition-colors placeholder:text-slate-500 ${
+                              fieldError
+                                ? "border-red-400/50"
+                                : "border-white/10 focus:border-sky-400/70 focus:ring-2 focus:ring-sky-400/20"
+                            }`}
+                            placeholder="Type your response"
+                          />
+                        ) : question.field_type === "SELECT" ? (
+                          <select
+                            value={responseValue}
+                            onChange={(event) =>
+                              updateQuestionResponse(question.id, event.target.value)
+                            }
+                            className={`w-full rounded-2xl border bg-slate-950/70 px-4 py-3 text-white outline-none transition-colors ${
+                              fieldError
+                                ? "border-red-400/50"
+                                : "border-white/10 focus:border-sky-400/70 focus:ring-2 focus:ring-sky-400/20"
+                            }`}
+                          >
+                            <option value="">Select an option</option>
+                            {parsedOptions.options.map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
+                        ) : question.field_type === "CHECKBOX" ? (
+                          <select
+                            value={responseValue}
+                            onChange={(event) =>
+                              updateQuestionResponse(question.id, event.target.value)
+                            }
+                            className={`w-full rounded-2xl border bg-slate-950/70 px-4 py-3 text-white outline-none transition-colors ${
+                              fieldError
+                                ? "border-red-400/50"
+                                : "border-white/10 focus:border-sky-400/70 focus:ring-2 focus:ring-sky-400/20"
+                            }`}
+                          >
+                            <option value="">Choose yes or no</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                          </select>
+                        ) : (
+                          <input
+                            type={
+                              question.field_type === "EMAIL"
+                                ? "email"
+                                : question.field_type === "PHONE"
+                                  ? "tel"
+                                  : question.field_type === "DATE"
+                                    ? "date"
+                                    : "text"
+                            }
+                            value={responseValue}
+                            onChange={(event) =>
+                              updateQuestionResponse(question.id, event.target.value)
+                            }
+                            className={`w-full rounded-2xl border bg-slate-950/70 px-4 py-3 text-white outline-none transition-colors placeholder:text-slate-500 ${
+                              fieldError
+                                ? "border-red-400/50"
+                                : "border-white/10 focus:border-sky-400/70 focus:ring-2 focus:ring-sky-400/20"
+                            }`}
+                            placeholder="Type your response"
+                          />
+                        )}
+
+                        {fieldError ? (
+                          <p className="mt-2 text-sm text-red-200">{fieldError}</p>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <aside className="rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur">
@@ -358,6 +565,29 @@ export default function ServiceBookingPage() {
                   {selectedResource?.name || selectedSlot?.resource_name || "Select a slot first"}
                 </p>
               </div>
+
+              {bookingLimitHint ? (
+                <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4">
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
+                    Booking rule
+                  </p>
+                  <p className="mt-2 text-sm text-slate-300">{bookingLimitHint}</p>
+                </div>
+              ) : null}
+
+              {service.requires_advance_payment ? (
+                <div className="rounded-2xl border border-amber-300/20 bg-amber-400/10 p-4">
+                  <p className="text-xs uppercase tracking-[0.2em] text-amber-100/80">
+                    Advance payment
+                  </p>
+                  <p className="mt-2 text-lg font-semibold text-amber-50">
+                    ${Number(service.advance_payment_amount ?? 0).toFixed(2)}
+                  </p>
+                  <p className="mt-1 text-sm text-amber-100/80">
+                    This service requires an advance payment. Confirm the booking now and coordinate payment with the organizer.
+                  </p>
+                </div>
+              ) : null}
 
               <div>
                 <label className="mb-2 block text-sm font-medium text-slate-200">

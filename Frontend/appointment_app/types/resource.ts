@@ -7,6 +7,7 @@ export interface Resource {
   type: ResourceType;
   description?: string | null;
   capacity: number;
+  is_active?: boolean;
   created_at: string;
   updated_at?: string | null;
   deleted_at?: string | null;
