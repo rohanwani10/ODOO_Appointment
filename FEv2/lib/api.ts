@@ -21,12 +21,25 @@ function buildUrl(path: string, params?: ApiOptions["params"]) {
 }
 
 async function parseError(response: Response) {
+  const fallback = `Request failed with status ${response.status}`;
+
   try {
-    const data = await response.json();
+    const text = await response.text();
+    let data: unknown = null;
+
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        const conciseText = text.length > 500 ? `${text.slice(0, 500)}...` : text;
+        throw new Error(conciseText || fallback);
+      }
+    }
+
     const detail =
-      typeof data?.detail === "string"
+      data && typeof data === "object" && "detail" in data && typeof data.detail === "string"
         ? data.detail
-        : typeof data?.message === "string"
+        : data && typeof data === "object" && "message" in data && typeof data.message === "string"
           ? data.message
           : "Request failed";
 
@@ -36,7 +49,25 @@ async function parseError(response: Response) {
       throw error;
     }
 
-    throw new Error(`Request failed with status ${response.status}`);
+    throw new Error(fallback);
+  }
+}
+
+async function parseResponse<T>(response: Response): Promise<T> {
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  const text = await response.text();
+  if (!text) {
+    return undefined as T;
+  }
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    const conciseText = text.length > 500 ? `${text.slice(0, 500)}...` : text;
+    throw new Error(`Expected JSON response but received: ${conciseText}`);
   }
 }
 
@@ -61,7 +92,7 @@ async function refreshTokens() {
         return null;
       }
 
-      const data = (await response.json()) as AuthResponse;
+      const data = await parseResponse<AuthResponse>(response);
       const nextSession = {
         accessToken: data.access_token,
         refreshToken: data.refresh_token,
@@ -111,9 +142,5 @@ export async function apiFetch<T>(path: string, options: ApiOptions = {}): Promi
     await parseError(response);
   }
 
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
-  return (await response.json()) as T;
+  return parseResponse<T>(response);
 }

@@ -304,7 +304,6 @@ export default function AppointmentDetailPage() {
     }
   }
 
-<<<<<<< Updated upstream
   async function handleSendZoomMeetingEmail() {
     if (!appointment) {
       return;
@@ -330,95 +329,6 @@ export default function AppointmentDetailPage() {
       setSendingMeetingEmail(false);
     }
   }
-
-  async function handlePayNow() {
-    if (!appointment || !paymentStatus?.requires_payment || paymentStatus.is_paid) {
-      return;
-    }
-
-    setError(null);
-    setMessage(null);
-
-    const scriptLoaded = await loadRazorpayScript();
-    const RazorpayCheckout = window.Razorpay;
-    if (!scriptLoaded || !RazorpayCheckout) {
-      setError("Unable to load Razorpay Checkout.");
-      return;
-    }
-
-    try {
-      const order = await apiFetch<RazorpayOrderResponse>(
-        `/api/payments/appointments/${appointment.id}/order`,
-        {
-          method: "POST",
-        },
-      );
-
-      await new Promise<void>((resolve) => {
-        const razorpay = new RazorpayCheckout({
-          key: order.key_id,
-          amount: order.amount,
-          currency: order.currency,
-          name: confirmation?.service_name || `Appointment #${appointment.id}`,
-          description: "Advance payment for appointment booking",
-          order_id: order.order_id,
-          prefill: {
-            name: user ? `${user.first_name} ${user.last_name}`.trim() : "",
-            email: user?.email || "",
-            contact: user?.phone || "",
-          },
-          notes: {
-            appointment_id: String(appointment.id),
-          },
-          handler: async (response: Record<string, string>) => {
-            try {
-              const verified = await apiFetch<PaymentStatus>(
-                `/api/payments/appointments/${appointment.id}/verify`,
-                {
-                  method: "POST",
-                  body: JSON.stringify({
-                    razorpay_order_id: response.razorpay_order_id,
-                    razorpay_payment_id: response.razorpay_payment_id,
-                    razorpay_signature: response.razorpay_signature,
-                  }),
-                },
-              );
-              setPaymentStatus(verified);
-              setMessage("Advance payment completed.");
-              await loadAppointment();
-            } catch (paymentError) {
-              setError(
-                paymentError instanceof Error
-                  ? paymentError.message
-                  : "Unable to verify payment",
-              );
-            } finally {
-              resolve();
-            }
-          },
-          modal: {
-            ondismiss: () => {
-              setMessage("Payment was not completed.");
-              resolve();
-            },
-          },
-          theme: {
-            color: "#0f172a",
-          },
-        });
-        razorpay.on("payment.failed", () => {
-          setMessage("Payment failed. You can try again.");
-          resolve();
-        });
-        razorpay.open();
-      });
-    } catch (paymentError) {
-      setError(paymentError instanceof Error ? paymentError.message : "Unable to start payment");
-    }
-  }
-
-=======
->>>>>>> Stashed changes
   return (
     <RequireAuth>
       <div className="page">

@@ -290,6 +290,72 @@ Appointment Booking System
         
         return self.send_email(email, subject, html_content, text_content)
 
+    def send_zoom_meeting_invite_email(
+        self,
+        *,
+        email: str,
+        recipient_name: str,
+        organizer_name: str,
+        service_name: str,
+        start_time: datetime,
+        end_time: datetime,
+        join_url: str,
+        resource_name: str = None,
+        notes: str = None,
+    ) -> bool:
+        """Send a Zoom meeting invitation email for an appointment."""
+        subject = f"Zoom meeting invite: {service_name}"
+        start_str = start_time.strftime("%Y-%m-%d %H:%M %Z")
+        end_str = end_time.strftime("%H:%M %Z")
+
+        text_content = f"""
+Hello {recipient_name},
+
+{organizer_name} shared a Zoom meeting link for your appointment.
+
+Service: {service_name}
+Date & Time: {start_str} - {end_str}
+{f"Resource: {resource_name}" if resource_name else ""}
+{f"Notes: {notes}" if notes else ""}
+
+Join Zoom meeting:
+{join_url}
+
+Best regards,
+Appointment Booking System
+        """
+
+        html_content = f"""
+        <html>
+            <body style="font-family: Arial, sans-serif;">
+                <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+                    <h2>Zoom Meeting Invitation</h2>
+                    <p>Hello {recipient_name},</p>
+                    <p><strong>{organizer_name}</strong> shared a Zoom meeting link for your appointment.</p>
+
+                    <div style="background-color: #f9f9f9; padding: 20px; border-left: 4px solid #0e71eb; margin: 20px 0;">
+                        <p><strong>Service:</strong> {service_name}</p>
+                        <p><strong>Date & Time:</strong> {start_str} - {end_str}</p>
+                        {f"<p><strong>Resource:</strong> {resource_name}</p>" if resource_name else ""}
+                        {f"<p><strong>Notes:</strong> {notes}</p>" if notes else ""}
+                    </div>
+
+                    <div style="text-align: center; margin: 30px 0;">
+                        <a href="{join_url}" style="background-color: #0e71eb; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: bold;">Join Zoom Meeting</a>
+                    </div>
+
+                    <p>If the button does not work, copy and paste this link in your browser:</p>
+                    <p style="word-break: break-all; color: #0e71eb;"><a href="{join_url}">{join_url}</a></p>
+
+                    <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
+                    <p style="color: #999; font-size: 12px;">Appointment Booking System. All rights reserved.</p>
+                </div>
+            </body>
+        </html>
+        """
+
+        return self.send_email(email, subject, html_content, text_content)
+
 
 # Singleton instance
 email_service = EmailService()

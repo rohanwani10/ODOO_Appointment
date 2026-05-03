@@ -167,6 +167,12 @@ export default function ServicePage() {
   }, [selectedDate, serviceId]);
 
   async function handleBook() {
+    const currentService = service;
+    if (!currentService) {
+      setError("Service details are still loading.");
+      return;
+    }
+
     if (!selectedSlot) {
       setError("Pick a slot before booking.");
       return;
@@ -219,11 +225,11 @@ export default function ServicePage() {
         });
       }
 
-      if (service.requires_advance_payment) {
+      if (currentService.requires_advance_payment) {
         if (
-          service.advance_payment_amount == null ||
-          !Number.isFinite(service.advance_payment_amount) ||
-          service.advance_payment_amount <= 0
+          currentService.advance_payment_amount == null ||
+          !Number.isFinite(currentService.advance_payment_amount) ||
+          currentService.advance_payment_amount <= 0
         ) {
           router.push(`/appointments/${appointment.id}?payment=failed`);
           return;
@@ -248,7 +254,7 @@ export default function ServicePage() {
             key: order.key_id,
             amount: order.amount,
             currency: order.currency,
-            name: service.name,
+            name: currentService.name,
             description: "Advance payment for appointment booking",
             order_id: order.order_id,
             prefill: {
@@ -258,7 +264,7 @@ export default function ServicePage() {
             },
             notes: {
               appointment_id: String(appointment.id),
-              service_id: String(service.id),
+              service_id: String(currentService.id),
             },
             handler: async (response: Record<string, string>) => {
               try {

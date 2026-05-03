@@ -232,3 +232,50 @@ class BookingLock(Base):
 
     lock_key = Column(String(255), primary_key=True)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class Payment(Base):
+    __tablename__ = "payments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    appointment_id = Column(Integer, ForeignKey("appointments.id", ondelete="CASCADE"), nullable=False, index=True)
+    provider = Column(String(50), nullable=False, default="RAZORPAY", index=True)
+    status = Column(String(50), nullable=False, default="CREATED", index=True)
+    amount = Column(Numeric(10, 2), nullable=False)
+    currency = Column(String(8), nullable=False, default="INR")
+    razorpay_order_id = Column(String(255), unique=True, nullable=True, index=True)
+    razorpay_payment_id = Column(String(255), unique=True, nullable=True, index=True)
+    razorpay_signature = Column(String(500), nullable=True)
+    gateway_response = Column(String, nullable=True)
+    verified_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        CheckConstraint("provider IN ('RAZORPAY')"),
+        CheckConstraint("status IN ('CREATED', 'AUTHORIZED', 'CAPTURED', 'FAILED', 'CANCELLED')"),
+        CheckConstraint("amount >= 0"),
+    )
+
+
+class AppointmentVirtualMeeting(Base):
+    __tablename__ = "appointment_virtual_meetings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    appointment_id = Column(Integer, ForeignKey("appointments.id", ondelete="CASCADE"), nullable=False, index=True)
+    provider = Column(String(50), nullable=False, default="ZOOM", index=True)
+    external_meeting_id = Column(String(255), nullable=True)
+    join_url = Column(String(1000), nullable=True)
+    start_url = Column(String(2000), nullable=True)
+    meeting_password = Column(String(255), nullable=True)
+    host_email = Column(String(255), nullable=True)
+    recipient_email = Column(String(255), nullable=True)
+    meeting_payload = Column(String, nullable=True)
+    sent_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        CheckConstraint("provider IN ('ZOOM')"),
+        UniqueConstraint("appointment_id", "provider", name="uq_appointment_virtual_meeting"),
+    )

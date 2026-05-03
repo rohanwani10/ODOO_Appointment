@@ -28,17 +28,32 @@ async function readApiError(response: Response) {
   const fallback = `API Error: ${response.status}`;
 
   try {
-    const data = await response.json();
+    const text = await response.text();
+    let data: unknown = null;
 
-    if (typeof data?.detail === 'string') {
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        return text.length > 500 ? `${text.slice(0, 500)}...` : text;
+      }
+    }
+
+    if (data && typeof data === 'object' && 'detail' in data && typeof data.detail === 'string') {
       return data.detail;
     }
 
-    if (Array.isArray(data?.detail) && data.detail[0]?.msg) {
+    if (
+      data &&
+      typeof data === 'object' &&
+      'detail' in data &&
+      Array.isArray(data.detail) &&
+      data.detail[0]?.msg
+    ) {
       return data.detail[0].msg;
     }
 
-    if (typeof data?.message === 'string') {
+    if (data && typeof data === 'object' && 'message' in data && typeof data.message === 'string') {
       return data.message;
     }
 
@@ -53,7 +68,17 @@ async function readApiResponse<T>(response: Response): Promise<T> {
     return undefined as T;
   }
 
-  return response.json() as Promise<T>;
+  const text = await response.text();
+  if (!text) {
+    return undefined as T;
+  }
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    const conciseText = text.length > 500 ? `${text.slice(0, 500)}...` : text;
+    throw new Error(`Expected JSON response but received: ${conciseText}`);
+  }
 }
 
 export async function apiFetch<T>(endpoint: string, options: FetchOptions = {}): Promise<T> {
@@ -106,7 +131,7 @@ export async function apiFetch<T>(endpoint: string, options: FetchOptions = {}):
           });
 
           if (refreshResponse.ok) {
-            const data = await refreshResponse.json();
+            const data = await readApiResponse<{ access_token: string; refresh_token: string }>(refreshResponse);
             setTokens(data.access_token, data.refresh_token);
             isRefreshing = false;
             onRefreshed(data.access_token);

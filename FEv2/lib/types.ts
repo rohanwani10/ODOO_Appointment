@@ -155,6 +155,7 @@ export interface RazorpayOrderResponse {
 export interface AppointmentConfirmation {
   appointment_id: number;
   status: string;
+  customer_name?: string | null;
   service_name?: string | null;
   resource_name?: string | null;
   start_time: string;
