@@ -54,7 +54,7 @@ from auth import (
     add_user_role,
     remove_user_role,
     soft_delete_user,
-    revoke_refresh_token,
+    revoke_refresh_token,   
     revoke_all_user_tokens,
     UserResponse,
     UserDetailResponse,

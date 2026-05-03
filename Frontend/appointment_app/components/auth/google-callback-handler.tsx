@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { setTokens } from "@/lib/auth";
@@ -8,6 +8,7 @@ import { setTokens } from "@/lib/auth";
 export function GoogleCallbackHandler() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const hasSubmittedCode = useRef(false);
   const [isProcessing, setIsProcessing] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -20,6 +21,10 @@ export function GoogleCallbackHandler() {
         if (!code) {
           throw new Error("No authorization code received from Google");
         }
+        if (hasSubmittedCode.current) {
+          return;
+        }
+        hasSubmittedCode.current = true;
 
         // Exchange code for tokens
         const response = await apiFetch<{

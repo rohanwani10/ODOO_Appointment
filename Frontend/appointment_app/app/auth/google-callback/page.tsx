@@ -20,6 +20,7 @@ function GoogleCallbackPageContent() {
             <p className="text-red-700 dark:text-red-300">{error}</p>
           </div>
         ) : code ? (
+          <GoogleCallbackHandler />
           <div>
             <GoogleCallbackHandler />
           </div>

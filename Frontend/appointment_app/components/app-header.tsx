@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { ChevronDown, LogOut, Settings2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
@@ -40,7 +41,7 @@ export function AppHeader() {
     `${user?.first_name?.[0] ?? "C"}${user?.last_name?.[0] ?? ""}`.trim();
   const displayName =
     [user?.first_name, user?.last_name].filter(Boolean).join(" ") ||
-    "Calvero user";
+    "MeetMint user";
 
   return (
     <header className="sticky top-0 z-50 border-b border-white/10 bg-slate-950/92 backdrop-blur-xl">
@@ -48,12 +49,17 @@ export function AppHeader() {
         <div className="flex items-center gap-4 sm:gap-8">
           <Link
             href="/dashboard"
-            className="flex items-center gap-2 text-lg font-semibold tracking-tight text-white"
+            className="flex items-center gap-3 text-lg font-semibold tracking-tight text-white"
           >
-            <span className="flex size-8 items-center justify-center rounded-xl bg-white text-sm font-bold text-slate-950">
-              C
-            </span>
-            Calvero
+            <Image
+              src="/MeetMint.png"
+              alt="MeetMint"
+              width={36}
+              height={36}
+              className="size-9 rounded-xl object-cover"
+              priority
+            />
+            MeetMint
           </Link>
 
           <nav className="hidden items-center gap-1 md:flex">

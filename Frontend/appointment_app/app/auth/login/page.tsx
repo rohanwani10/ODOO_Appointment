@@ -1,19 +1,17 @@
 "use client";
 
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Suspense, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Mail,
   Lock,
+  LogIn,
   AlertCircle,
-  CheckCircle2,
   Loader2,
   ArrowRight,
-  Sparkles,
-  Eye,
-  EyeOff,
 } from "lucide-react";
-import { motion, MotionConfig, useReducedMotion } from "framer-motion";
 import { apiFetch } from "@/lib/api";
 import { setTokens } from "@/lib/auth";
 import { useAuth } from "@/hooks/useAuth";
@@ -22,6 +20,7 @@ import Link from "next/link";
 import { getErrorMessage } from "@/lib/errors";
 import { GoogleLoginButton } from "@/components/auth/google-login-button";
 
+export default function LoginPage() {
 type FieldErrors = {
   email?: string;
   password?: string;
@@ -105,93 +104,86 @@ function LoginPageContent() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
-  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
-  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const shouldReduceMotion = useReducedMotion();
   const { refreshUser } = useAuth();
-  const emailInputRef = useRef<HTMLInputElement>(null);
-
-  const nextPath = useMemo(() => {
-    const next = searchParams.get("next");
-    return next && next.startsWith("/") ? next : "/dashboard";
-  }, [searchParams]);
-
-  const runValidation = (): FieldErrors => {
-    const emailError = validateEmail(email);
-    const passwordError = password.trim() ? undefined : "Password is required.";
-    return { email: emailError, password: passwordError };
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const validation = runValidation();
-    setFieldErrors(validation);
-    setError("");
-    setSuccessMessage("");
-
-    if (validation.email || validation.password) {
-      return;
-    }
-
     setIsLoading(true);
+    setError("");
 
     try {
       const data = await apiFetch<LoginResponse>("/api/auth/login", {
         method: "POST",
-        body: JSON.stringify({ email: email.trim(), password }),
+        body: JSON.stringify({ email, password }),
       });
 
       setTokens(data.access_token, data.refresh_token);
       await refreshUser();
-      setSuccessMessage("Signed in successfully. Redirecting...");
-      await new Promise((resolve) => setTimeout(resolve, 700));
-      router.replace(nextPath);
-    } catch (err) {
-      setError(
-        `${getErrorMessage(err, "Failed to login")}. Please check your credentials and try again.`,
+      const nextPath =
+        typeof window !== "undefined"
+          ? new URLSearchParams(window.location.search).get("next")
+          : null;
+      router.push(
+        nextPath && nextPath.startsWith("/") ? nextPath : "/dashboard",
       );
+    } catch (err) {
+      setError(getErrorMessage(err, "Failed to login"));
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <MotionConfig reducedMotion="user">
-      <div className="relative min-h-screen overflow-hidden bg-background text-white selection:bg-primary/30">
-        <AuthAnimatedBackground reduceMotion={!!shouldReduceMotion} />
-
-        <header className="fixed inset-x-0 top-0 z-50 border-b border-white/5 bg-slate-950/20 backdrop-blur-md">
-          <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-10">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(15,23,42,0.08),transparent_42%),linear-gradient(180deg,#f8fafc_0%,#eef2ff_36%,#ffffff_100%)] text-slate-950 dark:bg-[radial-gradient(circle_at_top,rgba(99,102,241,0.18),transparent_32%),linear-gradient(180deg,#020617_0%,#0f172a_100%)] dark:text-white">
+      <header className="fixed inset-x-0 top-0 z-50 border-b border-slate-200/70 bg-white/75 backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/70">
+        <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+          <Link
+            href="/"
+            className="flex items-center gap-3 transition-opacity hover:opacity-80"
+          >
+            <span className="flex size-10 items-center justify-center rounded-2xl bg-slate-950 text-sm font-semibold text-white shadow-lg shadow-slate-950/15 dark:bg-white dark:text-slate-950">
+              C
+            </span>
+            <span className="text-lg font-semibold tracking-tight">
+              MeetMint
+            </span>
+          </Link>
+          <nav className="flex items-center gap-3 sm:gap-5">
             <Link
-              href="/"
-              className="group flex items-center gap-3 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/80 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+              href="/pricing"
+              className="text-sm font-medium text-slate-600 transition-colors hover:text-slate-950 dark:text-slate-300 dark:hover:text-white"
             >
-              <span className="flex size-10 items-center justify-center rounded-2xl bg-white text-sm font-bold text-slate-950 shadow-xl transition-transform group-hover:rotate-12">
-                C
-              </span>
-              <span className="text-xl font-bold tracking-tight">Calvero</span>
+              Pricing
             </Link>
-            <nav className="flex items-center gap-4 sm:gap-6">
-              <Link
-                href="/pricing"
-                className="rounded-md text-sm font-semibold text-slate-200 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/80 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
-              >
-                Pricing
-              </Link>
-              <Link
-                href="/auth/register"
-                className="rounded-full bg-white px-4 py-2 text-sm font-bold text-slate-950 transition-all hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/80 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 sm:px-5"
-              >
-                Get Started
-              </Link>
-            </nav>
-          </div>
-        </header>
+            <Link
+              href="/auth/register"
+              className="inline-flex rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white shadow-[0_12px_30px_rgba(15,23,42,0.22)] transition-all hover:-translate-y-0.5 hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+            >
+              Get Started
+            </Link>
+          </nav>
+        </div>
+      </header>
 
+      <main className="flex min-h-screen items-center justify-center pt-20">
+        <div className="w-full max-w-lg px-4 py-12">
+          <div className="mb-8 flex justify-center">
+            <div className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white/75 px-4 py-1.5 text-sm font-medium text-slate-700 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/5 dark:text-slate-200">
+              <LogIn className="size-4 text-slate-500 dark:text-slate-400" />
+              Welcome to MeetMint
+            </div>
+          </div>
+
+          <div className="mb-10 text-center">
+            <h1 className="text-4xl font-semibold tracking-tight text-slate-950 dark:text-white">
+              Sign in to your account
+            </h1>
+            <p className="mt-4 text-lg text-slate-600 dark:text-slate-300">
+              Access your bookings, calendar sync, and scheduling tools.
+            </p>
+          </div>
         <main className="relative z-10 flex min-h-screen items-center justify-center px-4 pt-24 sm:px-6">
           <motion.div
             initial={shouldReduceMotion ? { opacity: 1 } : { opacity: 0, y: 20 }}
@@ -206,218 +198,126 @@ function LoginPageContent() {
               </div>
             </div>
 
-            <div className="mb-6 text-center sm:mb-8">
-              <h1 className="text-gradient text-3xl font-bold tracking-tight sm:text-5xl">
-                Sign In
-              </h1>
-              <p className="mt-3 text-sm text-slate-200 sm:text-base">
-                Access your premium scheduling suite.
+          {error && (
+            <div className="mb-6 rounded-lg border border-red-300 bg-red-50 p-4 flex items-start gap-3 dark:border-red-400/30 dark:bg-red-500/10">
+              <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+              <p className="text-sm font-medium text-red-800 dark:text-red-200">
+                {error}
               </p>
             </div>
+          )}
 
-            <section
-              aria-label="Sign in form"
-              className="glass-premium rounded-[32px] p-6 shadow-2xl sm:rounded-[40px] sm:p-8"
-            >
-              {error && (
-                <motion.div
-                  initial={shouldReduceMotion ? { opacity: 1 } : { opacity: 0, y: -6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: shouldReduceMotion ? 0 : 0.25 }}
-                  className="mb-4"
-                  role="alert"
-                  aria-live="polite"
-                >
-                  <div className="rounded-2xl border border-rose-400/45 bg-rose-950/45 p-4 text-rose-50">
-                    <div className="flex items-start gap-3">
-                      <AlertCircle className="mt-0.5 size-5 shrink-0 text-rose-200" />
-                      <div className="space-y-1">
-                        <p className="text-sm font-semibold">Sign-in failed</p>
-                        <p className="text-sm leading-5 text-rose-100/95">{error}</p>
-                        <p className="text-xs text-rose-100/90">Please retry. If this keeps happening, refresh the page.</p>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setError("");
-                        emailInputRef.current?.focus();
-                      }}
-                      className="mt-3 inline-flex rounded-lg border border-rose-200/60 px-3 py-1.5 text-xs font-semibold text-rose-50 transition hover:bg-rose-900/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-200 focus-visible:ring-offset-2 focus-visible:ring-offset-rose-950/80"
-                    >
-                      Dismiss and retry
-                    </button>
-                  </div>
-                </motion.div>
-              )}
-
-              {successMessage && (
-                <div className="mb-4 rounded-2xl border border-emerald-300/45 bg-emerald-900/45 p-4" aria-live="polite">
-                  <div className="flex items-start gap-3 text-emerald-50">
-                    <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-emerald-200" />
-                    <p className="text-sm font-semibold">{successMessage}</p>
-                  </div>
+          <div className="rounded-2xl border border-slate-200 bg-white/80 p-8 shadow-[0_12px_40px_rgba(15,23,42,0.06)] backdrop-blur dark:border-white/10 dark:bg-white/[0.04] sm:p-10">
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <div>
+                <label className="mb-2.5 block text-sm font-semibold text-slate-900 dark:text-white">
+                  Email address
+                </label>
+                <div className="relative">
+                  <Mail className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 pointer-events-none dark:text-slate-500" />
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 bg-white pl-12 pr-4 py-2.5 text-slate-900 outline-none transition-all placeholder:text-slate-500 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-slate-400 dark:focus:border-sky-400 dark:focus:ring-sky-400/20"
+                    placeholder="name@example.com"
+                    required
+                  />
                 </div>
-              )}
+              </div>
 
-              <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-                <div className="space-y-2">
-                  <label
-                    htmlFor="email"
-                    className="ml-1 text-xs font-bold uppercase tracking-[0.14em] text-slate-200"
-                  >
-                    Email
+              <div>
+                <div className="mb-2.5 flex items-center justify-between">
+                  <label className="block text-sm font-semibold text-slate-900 dark:text-white">
+                    Password
                   </label>
-                  <div className="relative">
-                    <Mail className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-slate-300" />
-                    <input
-                      ref={emailInputRef}
-                      id="email"
-                      name="email"
-                      type="email"
-                      autoComplete="email"
-                      value={email}
-                      onChange={(e) => {
-                        setEmail(e.target.value);
-                        if (fieldErrors.email) {
-                          setFieldErrors((prev) => ({ ...prev, email: validateEmail(e.target.value) }));
-                        }
-                      }}
-                      onBlur={() => {
-                        setFieldErrors((prev) => ({ ...prev, email: validateEmail(email) }));
-                      }}
-                      aria-invalid={!!fieldErrors.email}
-                      aria-describedby={fieldErrors.email ? "email-error" : undefined}
-                      disabled={isLoading}
-                      className="h-12 w-full rounded-2xl border border-white/15 bg-white/10 py-3 pl-12 pr-4 text-white placeholder:text-slate-300/80 outline-none transition focus-visible:border-primary/90 focus-visible:ring-2 focus-visible:ring-primary/75 disabled:cursor-not-allowed disabled:opacity-60"
-                      placeholder="name@example.com"
-                    />
-                  </div>
-                  {fieldErrors.email ? (
-                    <p id="email-error" className="ml-1 text-sm text-rose-200" role="alert">
-                      {fieldErrors.email}
-                    </p>
-                  ) : null}
+                  <Link
+                    href="/auth/forgot-password"
+                    className="text-xs text-sky-600 hover:text-sky-700 transition-colors dark:text-sky-400 dark:hover:text-sky-300"
+                  >
+                    Forgot password?
+                  </Link>
                 </div>
-
-                <div className="space-y-2">
-                  <div className="ml-1 flex items-center justify-between">
-                    <label
-                      htmlFor="password"
-                      className="text-xs font-bold uppercase tracking-[0.14em] text-slate-200"
-                    >
-                      Password
-                    </label>
-                    <Link
-                      href="/auth/forgot-password"
-                      className="rounded-md text-xs font-semibold text-primary transition hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/80 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
-                    >
-                      Forgot?
-                    </Link>
-                  </div>
-                  <div className="relative">
-                    <Lock className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-slate-300" />
-                    <input
-                      id="password"
-                      name="password"
-                      type={showPassword ? "text" : "password"}
-                      autoComplete="current-password"
-                      value={password}
-                      onChange={(e) => {
-                        setPassword(e.target.value);
-                        if (fieldErrors.password) {
-                          setFieldErrors((prev) => ({
-                            ...prev,
-                            password: e.target.value.trim() ? undefined : "Password is required.",
-                          }));
-                        }
-                      }}
-                      onBlur={() => {
-                        setFieldErrors((prev) => ({
-                          ...prev,
-                          password: password.trim() ? undefined : "Password is required.",
-                        }));
-                      }}
-                      aria-invalid={!!fieldErrors.password}
-                      aria-describedby={fieldErrors.password ? "password-error" : undefined}
-                      disabled={isLoading}
-                      className="h-12 w-full rounded-2xl border border-white/15 bg-white/10 py-3 pl-12 pr-12 text-white placeholder:text-slate-300/80 outline-none transition focus-visible:border-primary/90 focus-visible:ring-2 focus-visible:ring-primary/75 disabled:cursor-not-allowed disabled:opacity-60"
-                      placeholder="••••••••"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword((prev) => !prev)}
-                      disabled={isLoading}
-                      aria-label={showPassword ? "Hide password" : "Show password"}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-slate-200 transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/80 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                    </button>
-                  </div>
-                  {fieldErrors.password ? (
-                    <p id="password-error" className="ml-1 text-sm text-rose-200" role="alert">
-                      {fieldErrors.password}
-                    </p>
-                  ) : null}
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="group relative mt-2 h-12 w-full overflow-hidden rounded-2xl bg-white font-bold text-slate-950 transition hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <span className="relative z-10 flex items-center justify-center gap-2">
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="size-4 animate-spin" />
-                        <span>Signing in...</span>
-                      </>
-                    ) : (
-                      <>
-                        Sign In
-                        <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
-                      </>
-                    )}
-                  </span>
-                  {isLoading ? (
-                    <span className="absolute inset-x-0 bottom-0 h-1 animate-pulse bg-slate-900/20" aria-hidden="true" />
-                  ) : null}
-                </button>
-              </form>
-
-              <div className="mt-4">
-                <GoogleLoginButton
-                  onSuccess={async () => {
-                    await refreshUser();
-                    router.replace(nextPath);
-                  }}
-                  onError={(msg) => setError(getFriendlyGoogleError(msg))}
-                  className="h-12 w-full rounded-2xl border border-white/20 bg-white/90 px-4 py-3 text-sm font-semibold text-slate-900 transition hover:bg-white"
-                />
-              </div>
-
-              <div className="relative my-6">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-white/20" />
-                </div>
-                <div className="relative flex justify-center text-sm">
-                  <span className="bg-slate-900/60 px-3 text-slate-100">
-                    New to Calvero?
-                  </span>
+                <div className="relative">
+                  <Lock className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 pointer-events-none dark:text-slate-500" />
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 bg-white pl-12 pr-4 py-2.5 text-slate-900 outline-none transition-all placeholder:text-slate-500 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-slate-400 dark:focus:border-sky-400 dark:focus:ring-sky-400/20"
+                    placeholder="••••••••"
+                    required
+                  />
                 </div>
               </div>
 
-              <Link
-                href="/auth/register"
-                className="inline-flex w-full items-center justify-center rounded-2xl border border-white/20 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/80 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900"
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="mt-8 w-full inline-flex items-center justify-center rounded-full bg-slate-950 px-7 py-3 text-base font-semibold text-white shadow-[0_12px_30px_rgba(15,23,42,0.22)] transition-all hover:-translate-y-0.5 hover:bg-slate-800 disabled:translate-y-0 disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200 dark:disabled:bg-white/20 dark:disabled:text-slate-500"
               >
-                Create an account
-              </Link>
-            </section>
-          </motion.div>
-        </main>
-      </div>
-    </MotionConfig>
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Signing in...
+                  </>
+                ) : (
+                  <>
+                    Sign in
+                    <ArrowRight className="ml-2 size-4" />
+                  </>
+                )}
+              </button>
+            </form>
+
+            <div className="mt-6">
+              <GoogleLoginButton
+                onSuccess={() => {
+                  router.push("/dashboard");
+                }}
+                onError={setError}
+                className="w-full"
+              />
+            </div>
+
+            <div className="relative mt-6 mb-6">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-slate-300 dark:border-white/10" />
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="bg-white px-3 text-slate-500 dark:bg-slate-950/50 dark:text-slate-400">
+                  New to MeetMint?
+                </span>
+              </div>
+            </div>
+
+            <Link
+              href="/auth/register"
+              className="w-full inline-flex items-center justify-center rounded-full border border-slate-300 bg-white/80 px-7 py-3 text-base font-semibold text-slate-900 shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-400 hover:bg-white dark:border-white/10 dark:bg-white/5 dark:text-white dark:hover:bg-white/10"
+            >
+              Create account
+            </Link>
+          </div>
+
+          <p className="mt-6 text-center text-xs text-slate-500 dark:text-slate-400">
+            By signing in, you agree to our{" "}
+            <Link
+              href="#"
+              className="font-medium text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white"
+            >
+              Terms of Service
+            </Link>{" "}
+            and{" "}
+            <Link
+              href="#"
+              className="font-medium text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white"
+            >
+              Privacy Policy
+            </Link>
+          </p>
+        </div>
+      </main>
+    </div>
   );
 }
 

@@ -455,9 +455,9 @@ export default function RegisterForm({
               className="group flex items-center gap-3 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/80 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
             >
               <span className="flex size-10 items-center justify-center rounded-2xl bg-white text-sm font-bold text-slate-950 shadow-xl transition-transform group-hover:rotate-12">
-                C
+                M
               </span>
-              <span className="text-xl font-bold tracking-tight">Calvero</span>
+              <span className="text-xl font-bold tracking-tight">MeetMint</span>
             </Link>
             <nav className="flex items-center gap-4 sm:gap-6">
               <Link

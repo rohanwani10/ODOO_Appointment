@@ -39,7 +39,7 @@ export function IntegrationSection() {
               Seamless Google Calendar integration
             </h2>
             <p className="mt-4 text-lg text-zinc-600 dark:text-zinc-400">
-              Connect multiple Google accounts and let Calvero do the heavy
+              Connect multiple Google accounts and let MeetMint do the heavy
               lifting. Your busy times are automatically blocked, and new
               bookings create calendar events with video links.
             </p>
@@ -79,7 +79,9 @@ export function IntegrationSection() {
                     key={slot.time}
                     className="flex items-center gap-3 rounded-lg border bg-zinc-50 p-3 dark:bg-zinc-900"
                   >
-                    <div className={`size-2 rounded-full ${getColorClass(slot.color)}`} />
+                    <div
+                      className={`size-2 rounded-full ${getColorClass(slot.color)}`}
+                    />
                     <div className="text-sm font-medium text-zinc-500 dark:text-zinc-400">
                       {slot.time}
                     </div>
