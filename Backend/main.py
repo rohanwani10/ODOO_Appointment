@@ -628,6 +628,16 @@ def serialize_datetime(value: Optional[datetime]) -> Optional[str]:
     return normalize_datetime_to_utc(value).isoformat().replace("+00:00", "Z")
 
 
+def overlapping_capacity_used(appointments: List[Appointment], start_time: datetime, end_time: datetime) -> int:
+    """Return capacity used by appointments that overlap the given interval."""
+    return sum(
+        appointment.capacity_used
+        for appointment in appointments
+        if normalize_datetime_to_utc(appointment.start_time) < end_time
+        and normalize_datetime_to_utc(appointment.end_time) > start_time
+    )
+
+
 def create_audit_log(
     db: Session,
     user_id: Optional[int],
@@ -818,6 +828,12 @@ def validate_appointment_slot(
     exclude_appointment_id: Optional[int] = None,
 ) -> None:
     """Enforce service/resource assignment, schedule rules, and capacity checks."""
+    if start_time <= datetime.now(timezone.utc):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Appointment start time must be in the future",
+        )
+
     if resource.organization_id != service.organization_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -2074,6 +2090,7 @@ def get_service_availability(
             Resource.is_active.is_(True),
         ).all()
 
+    now = datetime.now(timezone.utc)
     all_slots = []
     for resource in resources:
         working_hours = db.query(ResourceWorkingHours).filter(
@@ -2092,6 +2109,13 @@ def get_service_availability(
             Appointment.status != 'CANCELLED',
             Appointment.start_time < day_end,
             Appointment.end_time > day_start
+        ).all()
+
+        existing_service_appts = db.query(Appointment).filter(
+            Appointment.service_id == service.id,
+            Appointment.status != 'CANCELLED',
+            Appointment.start_time < day_end,
+            Appointment.end_time > day_start,
         ).all()
 
         unavailability = db.query(ResourceUnavailability).filter(
@@ -2127,14 +2151,7 @@ def get_service_availability(
                 current = break_end
                 continue
 
-            # Capacity check
-            used = sum(
-                a.capacity_used
-                for a in existing_appts
-                if normalize_datetime_to_utc(a.start_time) < slot_end
-                and normalize_datetime_to_utc(a.end_time) > slot_start
-            )  # type: ignore[arg-type]
-            if used >= resource.capacity:
+            if slot_start <= now:
                 current += slot_duration
                 continue
 
@@ -2145,16 +2162,30 @@ def get_service_availability(
                 for u in unavailability
             )  # type: ignore[arg-type]
             if not is_blocked:
+                used_resource_capacity = overlapping_capacity_used(existing_appts, slot_start, slot_end)
+                if used_resource_capacity >= resource.capacity:
+                    current += slot_duration
+                    continue
+
+                used_service_capacity = overlapping_capacity_used(existing_service_appts, slot_start, slot_end)
+                available_capacity = min(
+                    resource.capacity - used_resource_capacity,
+                    service.capacity - used_service_capacity,
+                )
+                if available_capacity <= 0:
+                    current += slot_duration
+                    continue
+
                 all_slots.append({
                     "start_time": serialize_datetime(slot_start),
                     "end_time": serialize_datetime(slot_end),
                     "resource_id": resource.id,
                     "resource_name": resource.name,
-                    "available_capacity": resource.capacity - used,
+                    "available_capacity": available_capacity,
                 })
             current += slot_duration
 
-    return all_slots
+    return sorted(all_slots, key=lambda slot: (slot["start_time"], slot["resource_name"]))
 
 
 @app.get("/api/services/{service_id}/form-questions")
