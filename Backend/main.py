@@ -24,6 +24,7 @@ from models import (
     ResourceWorkingHours, ResourceUnavailability, AuditLog
 )
 from email_service import email_service
+from zoom_service import zoom_service
 from google_oauth_routes import router as google_oauth_router
 from schema_manager import sync_schema
 from auth import (
@@ -765,6 +766,20 @@ def ensure_assignable_organization_admin(user_id: int, db: Session) -> User:
 
 def ensure_email_delivery_available() -> None:
     """Fail fast when SMTP is not configured instead of pretending delivery worked."""
+    if not email_service.is_configured():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Email delivery is not configured",
+        )
+
+
+def ensure_zoom_delivery_available() -> None:
+    """Fail fast when Zoom or SMTP are unavailable for meeting-share actions."""
+    if not zoom_service.is_configured():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Zoom meeting sharing is not configured",
+        )
     if not email_service.is_configured():
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
